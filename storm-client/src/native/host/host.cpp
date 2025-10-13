@@ -11,7 +11,7 @@
 #include <openenclave/host.h>
 #include <openenclave/trace.h>
 
-#include "example_u.h"
+#include "atls_server_u.h"
 
 using namespace std;
 
@@ -30,7 +30,7 @@ bool check_simulate_opt(int *argc, const char *argv[]) {
 int main(int argc, const char *argv[]) {
   oe_result_t result;
   int ret = 0;
-  oe_enclave_t *example_enclave = NULL;
+  oe_enclave_t *atls_server_enclave = NULL;
   FILE *out_file = NULL;
 
   // Declare variables at the beginning to avoid goto issues
@@ -41,6 +41,9 @@ int main(int argc, const char *argv[]) {
   char enclave_log_filename[256];
   uint32_t flags;
   const char *enclave_path;
+
+  int retval = 0;
+  char port[] = "1234";
 
   flags = OE_ENCLAVE_FLAG_DEBUG;
   if (check_simulate_opt(&argc, argv)) {
@@ -63,8 +66,8 @@ int main(int argc, const char *argv[]) {
   cout << "Host: Enclave logs will be written to: " << enclave_log_filename
        << endl;
   cout << "Host: create enclave for image:" << enclave_path << endl;
-  result = oe_create_example_enclave(enclave_path, OE_ENCLAVE_TYPE_SGX, flags,
-                                     NULL, 0, &example_enclave);
+  result = oe_create_atls_server_enclave(enclave_path, OE_ENCLAVE_TYPE_SGX,
+                                         flags, NULL, 0, &atls_server_enclave);
   if (result != OE_OK) {
     fprintf(stderr, "oe_create_example_enclave(): result=%u (%s)\n", result,
             oe_result_str(result));
@@ -73,9 +76,9 @@ int main(int argc, const char *argv[]) {
   }
 
   // request the enclave to print hello world
-  result = ecall_helloworld(example_enclave);
+  result = ecall_set_up_tls_server(atls_server_enclave, &retval, port, true);
   if (result != OE_OK) {
-    fprintf(stderr, "ecall_helloworld(): result=%u (%s)\n", result,
+    fprintf(stderr, "ecall_set_up_tls_server(): result=%u (%s)\n", result,
             oe_result_str(result));
     ret = 1;
     goto exit;
@@ -83,8 +86,8 @@ int main(int argc, const char *argv[]) {
 
 exit:
   cout << "Host: terminate the enclave" << endl;
-  if (example_enclave)
-    oe_terminate_enclave(example_enclave);
+  if (atls_server_enclave)
+    oe_terminate_enclave(atls_server_enclave);
   if (out_file)
     fclose(out_file);
   return ret;

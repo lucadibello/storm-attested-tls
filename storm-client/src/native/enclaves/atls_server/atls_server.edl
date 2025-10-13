@@ -9,6 +9,6 @@ enclave {
 #endif
 
     trusted {
-        public int set_up_tls_server([in, string] char* port, bool keep_server_up);
+        public int ecall_set_up_tls_server([in, string] char* port, bool keep_server_up);
     };
 };
