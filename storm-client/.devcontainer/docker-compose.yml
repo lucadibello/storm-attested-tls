@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  devcontainer:
+    image: "${IMAGE_NAME}"
+    container_name: "${CONTAINER_NAME}"
+    build:
+      context: ".."
+      dockerfile: "${DOCKERFILE}"
+      args:
+        USER_NAME: "${DEV_USERNAME}"
+        USER_UID: "${DEV_UID}"
+        USER_GID: "${DEV_GID}"
+    env_file:
+      - .env
+    ports:
+      - "${SSH_BIND_HOST}:${SSH_PORT}:22"
+      - "${NVIM_BIND_HOST}:${NVIM_PORT}:6666"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    devices:
+      - "/dev/sgx_enclave:/dev/sgx_enclave"
+      - "/dev/sgx_provision:/dev/sgx_provision"
+      - "/dev/sgx_vepc:/dev/sgx_vepc"
+    volumes:
+      - "..:${WORKDIR}:rw"
+    working_dir: "${WORKDIR}"

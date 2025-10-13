@@ -31,6 +31,11 @@
     <name>Storm Client</name>
     <description>The client side (including worker) of Storm implementations.</description>
 
+    <properties>
+        <!-- Provide a default for IDEs resolving ${skipTests} in plugin configs -->
+        <skipTests>false</skipTests>
+    </properties>
+
     <dependencies>
         <!-- logging -->
 
@@ -326,6 +331,97 @@
                                             <include>jvm/**/*.java</include>
                                         </includes>
                                     </source>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>native</id>
+            <activation>
+                <!-- Activate explicitly with -Pnative -->
+            </activation>
+            <properties>
+                <!-- Allow overriding build type if needed -->
+                <native.build.type>Release</native.build.type>
+                <!-- Directory where CMake will generate build files -->
+                <native.build.dir>${project.build.directory}/native</native.build.dir>
+                <!-- Root of native sources -->
+                <native.source.dir>${project.basedir}/src/native</native.source.dir>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- Configure and build the CMake project -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>cmake-configure</id>
+                                <phase>generate-resources</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>cmake</executable>
+                                    <workingDirectory>${project.basedir}</workingDirectory>
+                                    <arguments>
+                                        <argument>-S</argument>
+                                        <argument>${native.source.dir}</argument>
+                                        <argument>-B</argument>
+                                        <argument>${native.build.dir}</argument>
+                                        <argument>-DCMAKE_BUILD_TYPE=${native.build.type}</argument>
+                                        <argument>-DBUILD_JNI_HOST=ON</argument>
+                                        <argument>-DBUILD_HOST_EXE=OFF</argument>
+                                        <!-- Crypto lib can be overridden with -DOE_CRYPTO_LIB=openssl -->
+                                        <argument>-DOE_CRYPTO_LIB=mbedtls</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>cmake-build</id>
+                                <phase>generate-resources</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>cmake</executable>
+                                    <workingDirectory>${project.basedir}</workingDirectory>
+                                    <arguments>
+                                        <argument>--build</argument>
+                                        <argument>${native.build.dir}</argument>
+                                        <argument>--config</argument>
+                                        <argument>${native.build.type}</argument>
+                                        <!-- Build both the host shared lib and sign all enclaves -->
+                                        <argument>--target</argument>
+                                        <argument>storm_atls_host</argument>
+                                        <argument>--target</argument>
+                                        <argument>sign_all</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Copy native build artifacts into the JAR under native/ -->
+                    <plugin>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-native-artifacts</id>
+                                <phase>process-resources</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.outputDirectory}/native</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${native.build.dir}/artifacts</directory>
+                                            <filtering>false</filtering>
+                                        </resource>
+                                    </resources>
                                 </configuration>
                             </execution>
                         </executions>
