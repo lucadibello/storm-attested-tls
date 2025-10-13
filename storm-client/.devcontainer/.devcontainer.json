@@ -1,8 +1,0 @@
-{
-  "name": "OpenEnclave + ApacheStorm Devcontainer",
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "devcontainer",
-  "workspaceFolder": "/workspaces/project",
-  "initializeCommand": "./scripts/devcontainer-sync-env.sh",
-  "overrideCommand": false
-}
