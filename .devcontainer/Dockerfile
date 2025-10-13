@@ -9,7 +9,6 @@ ARG NVIM_REF=stable
 ARG CMAKE_BUILD_TYPE=RelWithDebInfo
 ENV CMAKE_INSTALL_PREFIX=/nvim-out
 
-
 # Use bash + pipefail for safety in RUN steps
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -122,6 +121,10 @@ RUN curl -fsSL -o "storm.tgz" "https://dlcdn.apache.org/storm/apache-storm-${STO
   ln -s "/opt/apache-storm-${STORM_VERSION}" "${STORM_HOME}" && \
   ln -s "${STORM_HOME}/bin/storm" /usr/local/bin/storm && \
   rm -f storm.tgz
+
+# Copy nvim from nvim-builder
+COPY --from=nvim-builder /nvim-out/ /usr/local/
+RUN nvim --version | head -n 3
 
 # Import neovim config from github + fix ownership
 RUN git clone https://github.com/lucadibello/neovim.git /home/${USER_NAME}/.config/nvim \
