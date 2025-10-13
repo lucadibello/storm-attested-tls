@@ -202,6 +202,17 @@
                     <excludes>**/generated/**</excludes>
                 </configuration>
             </plugin>
+            <!-- NOTE: additional compiler arg to generate header files !-->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgs>
+                        <arg>-h</arg>
+                        <arg>${project.build.directory}/jni</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
             <plugin>
                 <artifactId>maven-dependency-plugin</artifactId>
                 <executions>
@@ -360,7 +371,7 @@
                         <executions>
                             <execution>
                                 <id>cmake-configure</id>
-                                <phase>generate-resources</phase>
+                                <phase>process-classes</phase>
                                 <goals>
                                     <goal>exec</goal>
                                 </goals>
@@ -382,7 +393,7 @@
                             </execution>
                             <execution>
                                 <id>cmake-build</id>
-                                <phase>generate-resources</phase>
+                                <phase>process-classes</phase>
                                 <goals>
                                     <goal>exec</goal>
                                 </goals>
@@ -410,7 +421,7 @@
                         <executions>
                             <execution>
                                 <id>copy-native-artifacts</id>
-                                <phase>process-resources</phase>
+                                <phase>prepare-package</phase>
                                 <goals>
                                     <goal>copy-resources</goal>
                                 </goals>

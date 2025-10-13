@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(oe_host LANGUAGES C CXX)
 
 find_package(OpenEnclave CONFIG REQUIRED)
+find_package(JNI REQUIRED)
 
 # Consume all untrusted stubs and their generators exported by enclaves
 get_property(ALL_U_STUBS     GLOBAL PROPERTY OE_ALL_UNTRUSTED_STUBS)
@@ -24,11 +25,18 @@ if(BUILD_JNI_HOST)
   add_library(storm_atls_host SHARED
     ${ALL_U_STUBS}
     ${CMAKE_CURRENT_SOURCE_DIR}/host.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/jni_bridge.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ocalls_host.cpp
   )
   if(ALL_U_GEN_TGTS)
     add_dependencies(storm_atls_host ${ALL_U_GEN_TGTS})
   endif()
-  target_include_directories(storm_atls_host PRIVATE ${ALL_U_INC_DIRS} ${OE_INCLUDEDIR})
+  target_include_directories(storm_atls_host PRIVATE
+    ${ALL_U_INC_DIRS}
+    ${OE_INCLUDEDIR}
+    ${JNI_INCLUDE_DIRS}
+    ${CMAKE_SOURCE_DIR}/../../target/jni
+  )
   target_compile_features(storm_atls_host PRIVATE c_std_11 cxx_std_17)
   target_compile_definitions(storm_atls_host PRIVATE OE_API_VERSION=2)
   target_link_libraries(storm_atls_host PRIVATE openenclave::oehost)
@@ -36,7 +44,7 @@ if(BUILD_JNI_HOST)
     target_link_libraries(storm_atls_host PRIVATE dl)
   endif()
   set_target_properties(storm_atls_host PROPERTIES
-    OUTPUT_NAME "storm_atls_host"
+    OUTPUT_NAME "oe_jni"
     LIBRARY_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/host"
     RUNTIME_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/host"
     ARCHIVE_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/host"
