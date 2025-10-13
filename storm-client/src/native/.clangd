@@ -1,0 +1,3 @@
+# include generated `compile_commands.json` - allows clangd to detect files generated during the build
+CompileFlags:
+  CompilationDatabase: build
