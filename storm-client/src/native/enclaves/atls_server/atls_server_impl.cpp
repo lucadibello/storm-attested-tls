@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include <openenclave/enclave.h>
-#include <openenclave/attestation/attester.h>
-#include <openenclave/attestation/sgx/evidence.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/net_sockets.h>
@@ -14,8 +12,6 @@
 #include <mbedtls/x509_crt.h>
 
 #include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
