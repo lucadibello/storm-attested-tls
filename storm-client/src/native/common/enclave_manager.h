@@ -1,8 +1,3 @@
-// Copyright (c) Open Enclave SDK contributors.
-// Licensed under the MIT License.
-
-#pragma once
-
 #include <openenclave/host.h>
 #include <string>
 
@@ -43,6 +38,4 @@ public:
         return enclave != nullptr;
     }
 };
-
 } // namespace oe_common
-

@@ -1,14 +1,15 @@
 #include "mbedtls_utility.h"
-#include <openenclave/attestation/attester.h>
+
+#include <oe_utility.h>
 #include <openenclave/attestation/sgx/evidence.h>
 
 // SGX Remote Attestation UUID.
 static oe_uuid_t _uuid_sgx_ecdsa = {OE_FORMAT_UUID_SGX_ECDSA};
 
-// Consider to move this function into a shared directory
 oe_result_t generate_certificate_and_pkey(
     mbedtls_x509_crt* certificate,
-    mbedtls_pk_context* private_key)
+    mbedtls_pk_context* private_key,
+    const unsigned char *certificate_subject_name)
 {
     oe_result_t result = OE_FAILURE;
     uint8_t* output_certificate = nullptr;
@@ -21,7 +22,7 @@ oe_result_t generate_certificate_and_pkey(
     size_t optional_parameters_size = 0;
     int ret = 0;
 
-    result = generate_key_pair(
+    result = oe_common::generate_key_pair(
         &public_key_buffer,
         &public_key_buffer_size,
         &private_key_buffer,
