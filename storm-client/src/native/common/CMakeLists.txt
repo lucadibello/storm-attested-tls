@@ -4,6 +4,13 @@ add_library(oe_common STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/enclave_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tcp_client.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/argument_parser.cpp
+        openssl_utility.cpp
+        openssl_utility.h
+        utility.cpp
+        utility.h
+        common.h
+        mbedtls_utility.cpp
+        mbedtls_utility.h
 )
 
 target_include_directories(oe_common PUBLIC

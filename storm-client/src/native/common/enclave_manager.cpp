@@ -60,3 +60,4 @@ bool EnclaveManager::destroy_enclave(oe_enclave_t* enclave) {
 }
 
 } // namespace oe_common
+

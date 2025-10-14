@@ -5,7 +5,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
-#include <cerrno>
 
 namespace oe_common {
 
