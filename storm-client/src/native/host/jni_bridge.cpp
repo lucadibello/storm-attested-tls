@@ -78,7 +78,14 @@ Java_org_apache_storm_oe_TlsServerEnclave_destroy(JNIEnv *env, jclass,
 
 extern "C" JNIEXPORT jint JNICALL
 Java_org_apache_storm_oe_TlsServerEnclave_setup_1tls_1server(
-    JNIEnv *env, jclass, jstring jport, jboolean keepServerUp) {
+    JNIEnv *env, jclass, jlong handle, jstring jport, jboolean keepServerUp) {
+
+  // Get the enclave from the handle
+  oe_enclave_t *e = get_enclave(handle);
+  if (!e) {
+    return -1; // Invalid handle
+  }
+
   const char *port_const = env->GetStringUTFChars(jport, nullptr);
 
   // The EDL expects a non-const char*, so we need to make a mutable copy
@@ -87,7 +94,7 @@ Java_org_apache_storm_oe_TlsServerEnclave_setup_1tls_1server(
 
   // Call the generated ECALL wrapper (from atls_server_u.h)
   int result = 0;
-  oe_result_t r = ecall_set_up_tls_server(nullptr, &result, port, keepServerUp);
+  oe_result_t r = ecall_set_up_tls_server(e, &result, port, keepServerUp);
 
   free(port);
   return (r == OE_OK) ? result : (jint)r;

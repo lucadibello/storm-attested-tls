@@ -10,8 +10,8 @@ get_property(ALL_U_STUBS     GLOBAL PROPERTY OE_ALL_UNTRUSTED_STUBS)
 get_property(ALL_U_INC_DIRS  GLOBAL PROPERTY OE_ALL_UNTRUSTED_INC_DIRS)
 get_property(ALL_U_GEN_TGTS  GLOBAL PROPERTY OE_ALL_U_GEN_TARGETS)
 
-# Mark generated sources so configure doesn’t fail if files
-# aren’t present yet
+# Mark generated sources so configure doesn't fail if files
+# aren't present yet
 if(ALL_U_STUBS)
   set_source_files_properties(${ALL_U_STUBS} PROPERTIES GENERATED TRUE)
 endif()
@@ -37,12 +37,14 @@ if(BUILD_JNI_HOST)
     ${OE_INCLUDEDIR}
     ${JNI_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/../../target/jni
+    ${CMAKE_SOURCE_DIR}/common
   )
   target_compile_features(storm_atls_host PRIVATE c_std_11 cxx_std_17)
   target_compile_definitions(storm_atls_host PRIVATE OE_API_VERSION=2)
   target_link_libraries(storm_atls_host PRIVATE
-          openenclave::oehost
-          spdlog::spdlog
+    openenclave::oehost
+    spdlog::spdlog
+    oe_common
   )
   if(UNIX AND NOT APPLE)
     target_link_libraries(storm_atls_host PRIVATE dl)
@@ -59,15 +61,21 @@ endif()
 if(BUILD_HOST_EXE)
   add_executable(oe_cli
     ${ALL_U_STUBS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/host.cpp # test logic (start enclave + make OCALLs)
+    ${CMAKE_CURRENT_SOURCE_DIR}/host.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ocalls_host.cpp
   )
   if(ALL_U_GEN_TGTS)
     add_dependencies(oe_cli ${ALL_U_GEN_TGTS})
   endif()
-  target_include_directories(oe_cli PRIVATE ${ALL_U_INC_DIRS} ${OE_INCLUDEDIR})
+  target_include_directories(oe_cli PRIVATE
+    ${ALL_U_INC_DIRS}
+    ${OE_INCLUDEDIR}
+    ${CMAKE_SOURCE_DIR}/common
+  )
   target_link_libraries(oe_cli PRIVATE
-          openenclave::oehost
-          spdlog::spdlog
+    openenclave::oehost
+    spdlog::spdlog
+    oe_common
   )
   target_compile_features(oe_cli PRIVATE c_std_11 cxx_std_17)
 
@@ -115,3 +123,4 @@ if(BUILD_HOST_EXE)
     VERBATIM
   )
 endif()
+

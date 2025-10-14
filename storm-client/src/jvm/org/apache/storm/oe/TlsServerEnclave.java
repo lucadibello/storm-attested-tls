@@ -15,7 +15,6 @@ public final class TlsServerEnclave {
     // destroys the enclave
     public static native void destroy(long handle);
 
-    // ECALLs from different enclaves
-    public static native int setup_tls_server(String port, boolean keepServerUp);
+    // ECALL to set up the TLS server - requires the enclave handle
+    public static native int setup_tls_server(long handle, String port, boolean keepServerUp);
 }
-

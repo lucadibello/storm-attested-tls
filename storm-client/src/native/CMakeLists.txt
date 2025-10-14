@@ -83,6 +83,9 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(OOEnclave)  # provides add_oe_enclave()
 
+# --- Common utilities library (shared across hosts/clients) ---
+add_subdirectory(common)
+
 # --- Enclave (hosting the attested TLS server) ---
 add_subdirectory(enclaves/atls_server)
 

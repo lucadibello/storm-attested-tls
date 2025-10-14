@@ -11,4 +11,21 @@ enclave {
     trusted {
         public int ecall_set_up_tls_server([in, string] char* port, bool keep_server_up);
     };
+
+    untrusted {
+        // Socket OCALLs for TLS server
+        int ocall_socket(int domain, int type, int protocol) propagate_errno;
+        int ocall_bind(int sockfd, [in, size=addrlen] const void* addr, size_t addrlen) propagate_errno;
+        int ocall_listen(int sockfd, int backlog) propagate_errno;
+        int ocall_accept(int sockfd, [out, size=addrlen_in] void* addr, size_t addrlen_in, [out] size_t* addrlen_out) propagate_errno;
+        int ocall_connect(int sockfd, [in, size=addrlen] const void* addr, size_t addrlen) propagate_errno;
+        size_t ocall_recv(int sockfd, [out, size=len] void* buf, size_t len, int flags) propagate_errno;
+        size_t ocall_send(int sockfd, [in, size=len] const void* buf, size_t len, int flags) propagate_errno;
+        int ocall_close(int fd) propagate_errno;
+        int ocall_setsockopt(int sockfd, int level, int optname, [in, size=optlen] const void* optval, size_t optlen) propagate_errno;
+        int ocall_getaddrinfo([in, string] const char* node, [in, string] const char* service,
+                             [in] const void* hints, size_t hints_size,
+                             [out, size=ai_size_in] void* ai, size_t ai_size_in, [out] size_t* ai_size_out) propagate_errno;
+        void ocall_freeaddrinfo([user_check] void* ai);
+    };
 };
