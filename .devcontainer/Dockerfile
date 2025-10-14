@@ -67,6 +67,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
   zlib1g-dev libssl-dev \
   python3 python3-venv \
   golang-go \
+  libspdlog-dev \
   && rm -rf /var/lib/apt/lists/*
 
 # Create dev group/user matching host IDs

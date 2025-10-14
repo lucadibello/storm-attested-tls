@@ -1,24 +1,20 @@
 #include <cstdint>
 #include <cstring>
-#include <ctime>
-#include <iostream>
-#include <stdio.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+#include <string>
 
 #include <openenclave/bits/result.h>
 #include <openenclave/bits/types.h>
 #include <openenclave/host.h>
-#include <openenclave/trace.h>
+
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 #include "atls_server_u.h"
-
-using namespace std;
 
 bool check_simulate_opt(int *argc, const char *argv[]) {
   for (int i = 0; i < *argc; i++) {
     if (strcmp(argv[i], "--simulate") == 0) {
-      cout << "Running in simulation mode" << endl;
+      spdlog::info("Running in simulation mode");
       memmove(&argv[i], &argv[i + 1], (*argc - i) * sizeof(char *));
       (*argc)--;
       return true;
@@ -27,68 +23,82 @@ bool check_simulate_opt(int *argc, const char *argv[]) {
   return false;
 }
 
+std::string parse_port_argument(const char* arg) {
+  const char* port_prefix = "-port:";
+  size_t prefix_len = strlen(port_prefix);
+
+  if (strncmp(arg, port_prefix, prefix_len) == 0) {
+    return arg + prefix_len;
+  }
+
+  return "";
+}
+
+void print_usage(const char* program_name) {
+  spdlog::error("Usage: {} [--simulate] <enclave_image_path> -port:<port>", program_name);
+  spdlog::error("  --simulate    Run in simulation mode");
+  spdlog::error("  -port:<port>  Port number for the TLS server (e.g., -port:1234)");
+}
+
 int main(int argc, const char *argv[]) {
-  oe_result_t result;
-  int ret = 0;
-  oe_enclave_t *atls_server_enclave = NULL;
-  FILE *out_file = NULL;
-
-  // Declare variables at the beginning to avoid goto issues
-  time_t now;
-  struct tm *timeinfo;
-  char timestamp[20];
-  char host_log_filename[256];
-  char enclave_log_filename[256];
-  uint32_t flags;
-  const char *enclave_path;
-
+  oe_enclave_t *atls_server_enclave = nullptr;
   int retval = 0;
-  char port[] = "1234";
+  std::string server_port;
 
-  flags = OE_ENCLAVE_FLAG_DEBUG;
+  // Set up spdlog with colored console output
+  auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+  auto logger = std::make_shared<spdlog::logger>("host", console_sink);
+  logger->set_level(spdlog::level::info);
+  spdlog::set_default_logger(logger);
+
+  uint32_t flags = OE_ENCLAVE_FLAG_DEBUG;
   if (check_simulate_opt(&argc, argv)) {
     flags |= OE_ENCLAVE_FLAG_SIMULATE;
   }
 
-  // After check_simulate_opt, argc should be 2: program + enclave path
-  if (argc != 2) {
-    cerr << "Usage: " << argv[0] << " [--simulate] <enclave_image_path>"
-         << endl;
-    cerr << "  --simulate    Run in simulation mode" << endl;
-    ret = 1;
-    goto exit;
+  // After check_simulate_opt, argc should be 3: program + enclave path + port
+  if (argc != 3) {
+    print_usage(argv[0]);
+    return 1;
   }
 
-  // save path to variable
-  enclave_path = argv[1];
+  const char *enclave_path = argv[1];
 
-  cout << "Host: Host logs will be written to: " << host_log_filename << endl;
-  cout << "Host: Enclave logs will be written to: " << enclave_log_filename
-       << endl;
-  cout << "Host: create enclave for image:" << enclave_path << endl;
-  result = oe_create_atls_server_enclave(enclave_path, OE_ENCLAVE_TYPE_SGX,
-                                         flags, NULL, 0, &atls_server_enclave);
+  // Parse port argument
+  server_port = parse_port_argument(argv[2]);
+  if (server_port.empty()) {
+    spdlog::error("Invalid port argument: {}", argv[2]);
+    print_usage(argv[0]);
+    return 1;
+  }
+
+  spdlog::info("Server port: {}", server_port);
+  spdlog::info("Creating enclave from image: {}", enclave_path);
+
+  oe_result_t result = oe_create_atls_server_enclave(enclave_path, OE_ENCLAVE_TYPE_SGX,
+                                                     flags, nullptr, 0, &atls_server_enclave);
   if (result != OE_OK) {
-    fprintf(stderr, "oe_create_example_enclave(): result=%u (%s)\n", result,
-            oe_result_str(result));
-    ret = 1;
-    goto exit;
+    spdlog::error("oe_create_atls_server_enclave() failed: result={} ({})",
+                  result, oe_result_str(result));
+    return 1;
   }
 
-  // request the enclave to print hello world
-  result = ecall_set_up_tls_server(atls_server_enclave, &retval, port, true);
+  spdlog::info("Setting up TLS server on port {}", server_port);
+  char port_buffer[server_port.size() + 1];
+  std::strcpy(port_buffer, server_port.c_str()); // copy from const char* to char*
+  result = ecall_set_up_tls_server(atls_server_enclave, &retval,
+                                   port_buffer, true);
   if (result != OE_OK) {
-    fprintf(stderr, "ecall_set_up_tls_server(): result=%u (%s)\n", result,
-            oe_result_str(result));
-    ret = 1;
-    goto exit;
-  }
-
-exit:
-  cout << "Host: terminate the enclave" << endl;
-  if (atls_server_enclave)
+    spdlog::error("ecall_set_up_tls_server() failed: result={} ({})",
+                  result, oe_result_str(result));
+    spdlog::info("Terminating enclave");
     oe_terminate_enclave(atls_server_enclave);
-  if (out_file)
-    fclose(out_file);
-  return ret;
+    return 1;
+  }
+
+  spdlog::info("TLS server setup completed successfully");
+  spdlog::info("Terminating enclave");
+  oe_terminate_enclave(atls_server_enclave);
+
+  return 0;
 }

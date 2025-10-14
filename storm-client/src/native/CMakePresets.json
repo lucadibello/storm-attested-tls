@@ -11,7 +11,18 @@
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_JNI_HOST": "ON",
+        "BUILD_HOST_EXE": "ON"
+      }
+    },
+    {
+      "name": "test-simulate",
+      "displayName": "Build with simulation mode enabled",
+      "inherits": "default",
+      "cacheVariables": {
+        "OE_TEST_SIMULATE": "ON",
+        "OE_TEST_PORT": "8443"
       }
     }
   ],
@@ -19,6 +30,24 @@
     {
       "name": "default",
       "configurePreset": "default"
+    },
+    {
+      "name": "run",
+      "displayName": "Build and Run Test Host",
+      "configurePreset": "default",
+      "targets": ["run"]
+    },
+    {
+      "name": "test_host",
+      "displayName": "Build and Test Host",
+      "configurePreset": "default",
+      "targets": ["test_host"]
+    },
+    {
+      "name": "oe_cli",
+      "displayName": "Build CLI Executable Only",
+      "configurePreset": "default",
+      "targets": ["oe_cli"]
     }
   ]
 }
