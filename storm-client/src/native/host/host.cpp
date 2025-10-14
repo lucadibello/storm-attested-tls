@@ -37,9 +37,7 @@ void run_server(oe_enclave_t* enclave, const std::string& port) {
     // Signal that we're starting the server
     g_server_ready = true;
 
-    oe_result_t result = ecall_set_up_tls_server(enclave, &retval, port_buffer, false);
-
-    if (result != OE_OK) {
+    if (oe_result_t result = ecall_set_up_tls_server(enclave, &retval, port_buffer, false); result != OE_OK) {
         spdlog::error("Server thread: ecall_set_up_tls_server() failed: result={} ({})",
                       result, oe_result_str(result));
     } else if (retval != 0) {
@@ -50,7 +48,7 @@ void run_server(oe_enclave_t* enclave, const std::string& port) {
 }
 
 // Run a simple connectivity test using the common TcpClient
-bool run_connectivity_test(int port) {
+bool run_connectivity_test(const int port) {
     spdlog::info("");
     spdlog::info("========================================");
     spdlog::info("Running Connectivity Test");
@@ -88,9 +86,8 @@ bool run_connectivity_test(int port) {
     // Receive and display message from server
     char buffer[1024];
     spdlog::info("Test: Waiting to receive message...");
-    ssize_t received = client.receive(buffer, sizeof(buffer) - 1);
 
-    if (received > 0) {
+    if (ssize_t received = client.receive(buffer, sizeof(buffer) - 1); received > 0) {
         buffer[received] = '\0';
         spdlog::info("Test: ✓ Received {} bytes: '{}'", received, buffer);
     } else {
@@ -109,13 +106,12 @@ bool run_connectivity_test(int port) {
     return true;
 }
 
-int main(int argc, const char *argv[]) {
+int main(const int argc, const char *argv[]) {
   oe_enclave_t *atls_server_enclave = nullptr;
-  std::string server_port;
 
   // Set up spdlog with colored console output
   auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-  auto logger = std::make_shared<spdlog::logger>("host", console_sink);
+  const auto logger = std::make_shared<spdlog::logger>("host", console_sink);
   logger->set_level(spdlog::level::info);
   spdlog::set_default_logger(logger);
 
@@ -143,14 +139,14 @@ int main(int argc, const char *argv[]) {
   const std::string enclave_path = parser.get_arg(1);
 
   // Parse port argument
-  server_port = parser.parse_value_argument("-port:");
+  std::string server_port = parser.parse_value_argument("-port:");
   if (server_port.empty()) {
     spdlog::error("Invalid or missing port argument");
     print_usage(argv[0]);
     return 1;
   }
 
-  int port_number = std::stoi(server_port);
+  const int port_number = std::stoi(server_port);
   spdlog::info("Configuration:");
   spdlog::info("  - Enclave: {}", enclave_path);
   spdlog::info("  - Port: {}", server_port);
@@ -180,7 +176,7 @@ int main(int argc, const char *argv[]) {
   std::thread server_thread(run_server, atls_server_enclave, server_port);
 
   // Run connectivity test
-  bool test_passed = run_connectivity_test(port_number);
+  const bool test_passed = run_connectivity_test(port_number);
 
   // Give server a moment to handle the connection
   std::this_thread::sleep_for(std::chrono::seconds(2));

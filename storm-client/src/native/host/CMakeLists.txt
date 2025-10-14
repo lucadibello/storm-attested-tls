@@ -63,7 +63,6 @@ if(BUILD_HOST_EXE)
     ${ALL_U_STUBS}
     ${CMAKE_CURRENT_SOURCE_DIR}/host.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ocalls_host.cpp
-          ../enclaves/atls_server/openssl_server.cpp
   )
   if(ALL_U_GEN_TGTS)
     add_dependencies(oe_cli ${ALL_U_GEN_TGTS})

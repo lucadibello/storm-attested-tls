@@ -99,12 +99,12 @@ function(add_oe_enclave)
 
   if(LVI_MITIGATION MATCHES ControlFlow)
     apply_lvi_mitigation(${AOE_NAME})
-    target_link_libraries(${AOE_NAME}
+    target_link_libraries(${AOE_NAME} PRIVATE
       openenclave::oeenclave-lvi-cfg
       openenclave::oecrypto${OE_CRYPTO_LIB}-lvi-cfg
       openenclave::oelibc-lvi-cfg)
   else()
-    target_link_libraries(${AOE_NAME}
+    target_link_libraries(${AOE_NAME} PRIVATE
       openenclave::oeenclave
       openenclave::oecrypto${OE_CRYPTO_LIB}
       openenclave::oelibc)
