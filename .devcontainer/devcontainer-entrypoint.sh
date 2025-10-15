@@ -52,6 +52,7 @@ fi
 # Ensure the dev user can access SGX device nodes without sudo by matching host GIDs.
 ensure_device_group() {
   local device_path="$1"
+  local device_alias="$2"
   if [ ! -e "$device_path" ]; then
     return
   fi
@@ -68,24 +69,20 @@ ensure_device_group() {
   if getent group "$device_gid" >/dev/null; then
     group_name="$(getent group "$device_gid" | cut -d: -f1)"
   else
-    group_name="sgx$(basename "$device_path")"
-    # If the generated name already exists with a different GID, append the GID to keep it unique.
+    group_name="$device_alias"
     if getent group "$group_name" >/dev/null; then
-      local existing_gid=""
-      existing_gid="$(getent group "$group_name" | cut -d: -f3)"
-      if [ "$existing_gid" != "$device_gid" ]; then
-        group_name="${group_name}_${device_gid}"
-      fi
+      groupmod -g "$device_gid" "$group_name" || return
+    else
+      groupadd -g "$device_gid" "$group_name" || return
     fi
-    groupadd -g "$device_gid" "$group_name" || return
   fi
 
   usermod -aG "$group_name" "$DEVUSER" || true
 }
 
-for sgx_device in /dev/sgx_enclave /dev/sgx_provision /dev/sgx_vepc; do
-  ensure_device_group "$sgx_device"
-done
+ensure_device_group /dev/sgx_enclave sgx_enclave
+ensure_device_group /dev/sgx_provision sgx_prv
+ensure_device_group /dev/sgx_vepc sgx_vepc
 
 # Configure authorized_keys from either:
 #  - env SSH_PUBKEY (single key string)
