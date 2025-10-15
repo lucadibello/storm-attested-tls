@@ -1,19 +1,16 @@
 #include <cassert>
 #include <openenclave/enclave.h>
 #include <openenclave/tracee.h>
-#include <mbedtls/ctr_drbg.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/net_sockets.h>
-#include <mbedtls/pk.h>
-#include <mbedtls/ssl.h>
-#include <mbedtls/ssl_cache.h>
-#include <mbedtls/x509_crt.h>
-#include <mbedtls/platform.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/x509.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <cstring>
-#include <mbedtls_utility.h>
+#include <openssl_utility.h>
 #include <oe_enclave_utility.h>
 #include <openenclave/log.h>
 #include <openenclave/attestation/verifier.h>
@@ -32,112 +29,177 @@
     fflush(stdout); \
 } while(0)
 
-static void my_debug(
-    void* ctx,
-    const int level,
-    const char* file,
-    const int line,
-    const char* str)
-{
-    ((void)level);
+// Certificate verification callback with attestation
+static int verify_callback(int preverify_ok, X509_STORE_CTX* ctx) {
+    (void)preverify_ok;
 
-    mbedtls_fprintf(static_cast<FILE *>(ctx), "%s:%04d: %s", file, line, str);
-    fflush(static_cast<FILE *>(ctx));
-}
+    ENCLAVE_LOG("[TLS Server] Certificate verification callback invoked\n");
 
-// Certificate verification with attestation
-static int verify_certificate(
-    // ReSharper disable once CppParameterMayBeConstPtrOrRef
-    void* data,
-    // ReSharper disable once CppParameterMayBeConstPtrOrRef
-    mbedtls_x509_crt* crt,
-    const int depth,
-    uint32_t* flags) {
-
-    int ret = 0;
-    unsigned char* cert_buf = nullptr;
-    size_t cert_size = 0;
-
-    (void)data;
+    // Get the certificate being verified
+    X509* cert = X509_STORE_CTX_get_current_cert(ctx);
+    int depth = X509_STORE_CTX_get_error_depth(ctx);
 
     ENCLAVE_LOG("[TLS Server] Verifying certificate at depth %d\n", depth);
 
     // Only verify the leaf certificate (depth 0)
     if (depth != 0) {
+        return 1; // Accept intermediate/root certificates
+    }
+
+    // Get DER-encoded certificate
+    unsigned char* cert_buf = nullptr;
+    int cert_len = i2d_X509(cert, &cert_buf);
+
+    if (cert_len < 0) {
+        ENCLAVE_LOG("[TLS Server] Failed to encode certificate to DER\n");
         return 0;
     }
 
-    // Get certificate DER encoding
-    cert_buf = crt->raw.p;
-    cert_size = crt->raw.len;
-
     // Verify the certificate with attestation evidence
-    const oe_result_t result = oe_verify_attestation_certificate(
+    oe_result_t result = oe_verify_attestation_certificate(
         cert_buf,
-        cert_size,
+        cert_len,
         nullptr,
         nullptr);
 
+    OPENSSL_free(cert_buf);
+
     if (result != OE_OK) {
-        ENCLAVE_LOG("[TLS Server] Certificate verification failed: %d\n", result);
-        *flags |= MBEDTLS_X509_BADCERT_OTHER;
-        ret = MBEDTLS_ERR_X509_CERT_VERIFY_FAILED;
-    } else {
-        ENCLAVE_LOG("[TLS Server] Certificate verified successfully\n");
+        ENCLAVE_LOG("[TLS Server] Certificate attestation verification failed: %s\n", oe_result_str(result));
+        return 0;
     }
 
+    ENCLAVE_LOG("[TLS Server] Certificate verified successfully with attestation\n");
+    return 1;
+}
+
+// Create listening socket
+static int create_listener_socket(int port, int& server_socket) {
+    int ret = -1;
+    const int reuse = 1;
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((uint16_t)port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket < 0) {
+        ENCLAVE_LOG(TLS_SERVER "socket creation failed\n");
+        goto exit;
+    }
+
+    if (setsockopt(
+            server_socket,
+            SOL_SOCKET,
+            SO_REUSEADDR,
+            (const void*)&reuse,
+            sizeof(reuse)) < 0) {
+        ENCLAVE_LOG(TLS_SERVER "setsockopt failed\n");
+        goto exit;
+    }
+
+    if (bind(server_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        ENCLAVE_LOG(TLS_SERVER "Unable to bind socket to port %d\n", port);
+        goto exit;
+    }
+
+    if (listen(server_socket, 20) < 0) {
+        ENCLAVE_LOG(TLS_SERVER "Unable to listen on socket\n");
+        goto exit;
+    }
+
+    ENCLAVE_LOG(TLS_SERVER "Listening on port %d\n", port);
+    ret = 0;
+
+exit:
     return ret;
 }
 
-static int setup_tls_config(
-    mbedtls_ssl_config* ssl_conf,
-    mbedtls_x509_crt* server_cert,
-    mbedtls_pk_context* pkey,
-    mbedtls_ctr_drbg_context* ctr_drbg,
-    mbedtls_ssl_cache_context* cache) {
+// Handle client connections
+static int handle_communication_until_done(
+    int& server_socket_fd,
+    int& client_socket_fd,
+    SSL_CTX*& ssl_server_ctx,
+    SSL*& ssl_session,
+    bool keep_server_up) {
 
-    ENCLAVE_LOG("[TLS Server] Setting up TLS configuration\n");
+    int ret = -1;
+    struct sockaddr_in addr;
+    socklen_t len;
+    int ssl_accept_ret;
+    int ssl_error;
 
-    // Initialize SSL configuration
-    int ret = mbedtls_ssl_config_defaults(
-        ssl_conf,
-        MBEDTLS_SSL_IS_SERVER,
-        MBEDTLS_SSL_TRANSPORT_STREAM,
-        MBEDTLS_SSL_PRESET_DEFAULT);
-    if (ret != 0) {
-        ENCLAVE_LOG("[TLS Server] mbedtls_ssl_config_defaults failed: %d\n", ret);
-        return ret;
+waiting_for_connection_request:
+
+    // Reset SSL session and client socket for new connection
+    if (client_socket_fd >= 0) {
+        close(client_socket_fd);
+        client_socket_fd = -1;
+    }
+    if (ssl_session != nullptr) {
+        SSL_free(ssl_session);
+        ssl_session = nullptr;
     }
 
-    // Set SSL RNG
-    mbedtls_ssl_conf_rng(ssl_conf, mbedtls_ctr_drbg_random, ctr_drbg);
-    mbedtls_ssl_conf_dbg(ssl_conf, my_debug, stdout);
+    ENCLAVE_LOG(TLS_SERVER "Waiting for client connection\n");
 
-    // Set session cache
-    mbedtls_ssl_conf_session_cache(
-        ssl_conf, cache, mbedtls_ssl_cache_get, mbedtls_ssl_cache_set);
+    len = sizeof(addr);
+    client_socket_fd = accept(server_socket_fd, (struct sockaddr*)&addr, &len);
 
-    // OPTIONS:
-    //  - MBEDTLS_SSL_VERIFY_REQUIRED (mutual TLS) = fail if no client cert or verification fails
-    //  - MBEDTLS_SSL_VERIFY_OPTIONAL = request client cert, but allow connection even if no
-    mbedtls_ssl_conf_authmode(ssl_conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
-
-    // Set certificate verification callback
-    mbedtls_ssl_conf_verify(ssl_conf, verify_certificate, nullptr);
-    mbedtls_ssl_conf_ca_chain(ssl_conf, server_cert->next, nullptr);
-
-    // Set certificate and private key
-    ret = mbedtls_ssl_conf_own_cert(ssl_conf, server_cert, pkey);
-    if (ret != 0) {
-        ENCLAVE_LOG("[TLS Server] mbedtls_ssl_conf_own_cert failed: %d\n", ret);
-        return ret;
+    if (client_socket_fd < 0) {
+        ENCLAVE_LOG(TLS_SERVER "Unable to accept client request\n");
+        goto exit;
     }
 
-    // log + return success code
-    ENCLAVE_LOG("[TLS Server] TLS configuration completed\n");
+    ENCLAVE_LOG(TLS_SERVER "Client connected\n");
 
-    // if we reach here, everything went fine (ret == 0)
-    assert((void("Somehow ret is not equal to zero. Ensure that you handled all error branches properly!"), ret == 0));
+    // Create a new SSL structure for connection
+    ssl_session = SSL_new(ssl_server_ctx);
+    if (ssl_session == nullptr) {
+        ENCLAVE_LOG(TLS_SERVER "Unable to create new SSL connection state object\n");
+        ERR_print_errors_fp(stderr);
+        goto exit;
+    }
+
+    SSL_set_fd(ssl_session, client_socket_fd);
+
+    // Perform TLS handshake
+    ENCLAVE_LOG(TLS_SERVER "Performing TLS handshake\n");
+    ssl_accept_ret = SSL_accept(ssl_session);
+    if (ssl_accept_ret <= 0) {
+        ssl_error = SSL_get_error(ssl_session, ssl_accept_ret);
+        ENCLAVE_LOG(TLS_SERVER "SSL handshake failed with error: %d\n", ssl_error);
+        ERR_print_errors_fp(stderr);
+        goto exit;
+    }
+
+    ENCLAVE_LOG(TLS_SERVER "TLS handshake completed successfully\n");
+
+    // Read from client
+    ENCLAVE_LOG(TLS_SERVER "Reading from client...\n");
+    if (openssl_utility::read_from_session_peer(
+            ssl_session, CLIENT_PAYLOAD, CLIENT_PAYLOAD_SIZE) != 0) {
+        ENCLAVE_LOG(TLS_SERVER "Read from client failed\n");
+        goto exit;
+    }
+
+    // Write to client
+    ENCLAVE_LOG(TLS_SERVER "Writing to client...\n");
+    if (openssl_utility::write_to_session_peer(
+            ssl_session, SERVER_PAYLOAD, strlen(SERVER_PAYLOAD)) != 0) {
+        ENCLAVE_LOG(TLS_SERVER "Write to client failed\n");
+        goto exit;
+    }
+
+    ENCLAVE_LOG(TLS_SERVER "Client communication completed successfully\n");
+
+    if (keep_server_up) {
+        goto waiting_for_connection_request;
+    }
+
+    ret = 0;
+
+exit:
     return ret;
 }
 
@@ -151,134 +213,161 @@ void enclave_customized_log(
 
     sprintf(
         modified_log,
-        "E, %s, %lx, %s",  // No newline - message already has one
+        "E, %s, %lx, %s",
         oe_log_level_strings[level],
         thread_id,
         message);
 
-    /*
-     * Add logic here to modify the log message, to obscure enclave logs from
-     * the host. The context might be used, for example, to transfer a
-     * shared/public/private secret, that may be used to encrypt the log
-     * message.
-     *
-     * NOTE: Do not use operations based on OE's host filesystem support
-     * in this function, they do not work consistently. If used, the
-     * logs generated after oe_terminate_enclave() cause the program to crash
-     * with a segmentation fault (issue #4349).
-     */
     OE_UNUSED(context);
 
-    /* invoke ocall to copy enclave logs to file */
     const oe_result_t result = ocall_transfer_logs_to_file(modified_log, strlen(modified_log));
     OE_UNUSED(result);
 }
 
-// ECALL to set handler
+// ECALL to set log handler
 extern "C" void ecall_set_log_callback()
 {
-    // make sure that logs use the enclave_customized_log function
     oe_enclave_log_set_callback(nullptr, enclave_customized_log);
 }
 
 // Main ECALL: Set up and run the TLS server
 extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
     int ret = OE_FAILURE;
-
-    // validate + cast port number to correct type
+    int server_socket_fd = -1;
+    int client_socket_fd = -1;
+    int port_number = 0;
     char* endptr = nullptr;
-    long port_num = strtol(port, &endptr, 10);
+    long port_num;
+    const char* subject_name = "CN=Attested TLS Server,O=Università della Svizzera italiana (USI),OU=Faculty of Informatics,L=Lugano,ST=Ticino,C=CH";
+
+    X509* certificate = nullptr;
+    EVP_PKEY* pkey = nullptr;
+    SSL_CTX* ssl_server_ctx = nullptr;
+    SSL* ssl_session = nullptr;
+
+    // Validate and parse port number
+    port_num = strtol(port, &endptr, 10);
     if (*endptr != '\0' || port_num <= 0 || port_num > 65535) {
         ENCLAVE_LOG("[TLS Server] Invalid port number: %s\n", port);
         return OE_INVALID_PARAMETER;
     }
+    port_number = (int)port_num;
 
-    // load required oe modules
+    ENCLAVE_LOG("[TLS Server] Starting attested TLS server on port %d\n", port_number);
+
+    // Load required OE modules
     ret = oe_enclave_utility::load_oe_modules();
     if (ret != OE_OK) {
-        ENCLAVE_LOG("[TLS Server] loading required Open Enclave modules failed\n");
+        ENCLAVE_LOG("[TLS Server] Loading required Open Enclave modules failed\n");
         return ret;
     }
 
-    mbedtls_entropy_context entropy;
-    mbedtls_ctr_drbg_context ctr_drbg;
-    mbedtls_ssl_context ssl_ctx;
-    mbedtls_ssl_config ssl_config;
-    mbedtls_x509_crt server_cert;
-    mbedtls_pk_context pkey;
-    mbedtls_ssl_cache_context cache;
-    mbedtls_net_context listen_fd;
+    // Initialize OpenSSL
+    SSL_load_error_strings();
+    OpenSSL_add_ssl_algorithms();
 
-    // Initialize mbedTLS structures
-    mbedtls_net_init(&listen_fd);
-    mbedtls_ssl_init(&ssl_ctx);
-    mbedtls_ssl_config_init(&ssl_config);
-    mbedtls_ssl_cache_init(&cache);
-    mbedtls_x509_crt_init(&server_cert);
-    mbedtls_pk_init(&pkey);
-    mbedtls_entropy_init(&entropy);
-    mbedtls_ctr_drbg_init(&ctr_drbg);
-    oe_verifier_initialize(); // initialize verifier to validate client certificates!
+    // Create SSL context
+    ssl_server_ctx = SSL_CTX_new(TLS_server_method());
+    if (ssl_server_ctx == nullptr) {
+        ENCLAVE_LOG("[TLS Server] Unable to create SSL context\n");
+        ERR_print_errors_fp(stderr);
+        goto exit;
+    }
 
-    // NOTE: this do-while(false) block is used to have a structured error handling
-    // This is done to guarantee the cleanup without GOTO statements.
-    do {
-        ENCLAVE_LOG("[TLS Server] Starting attested TLS server on port %s\n", port);
+    // Initialize SSL context with proper settings
+    ret = openssl_utility::initialize_ssl_context(ssl_server_ctx);
+    if (ret != OE_OK) {
+        ENCLAVE_LOG("[TLS Server] Unable to initialize SSL context\n");
+        goto exit;
+    }
 
-        // Seed the RNG
-        ENCLAVE_LOG("[TLS Server] Seeding random number generator\n");
-        ret = mbedtls_ctr_drbg_seed(
-            &ctr_drbg,
-            mbedtls_entropy_func,
-            &entropy,
-            reinterpret_cast<const unsigned char *>("tls_server"),
-            strlen("tls_server"));
-        if (ret != 0) {
-            ENCLAVE_LOG("[TLS Server] mbedtls_ctr_drbg_seed failed: %d\n", ret);
-            break;
-        }
+    // Set certificate verification callback
+    SSL_CTX_set_verify(ssl_server_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_callback);
 
-        // Try to generate certificate with attestation
-        ENCLAVE_LOG("[TLS Server] Generating attested certificate...\n");
+    // Initialize verifier for attestation
+    oe_verifier_initialize();
 
-        // FIXME: this has to be changed in the future. Now hard-coded.
-        constexpr unsigned char certificate_subject_name[] =
-            "CN=Attested TLS Server,"
-            "O=Università della Svizzera italiana (USI),"
-            "OU=Faculty of Informatics,"
-            "L=Lugano,"
-            "ST=Ticino,"
-            "C=CH";
-        ret = mbedtls_utility::generate_certificate_and_pkey(&server_cert, &pkey, certificate_subject_name);
-        ENCLAVE_LOG("[TLS Server] Generated certificate and pkey. Result: %d\n", ret);
-        if (ret != OE_OK) {
-            ENCLAVE_LOG("[TLS Server] Failed to generate attested certificate. Error: %s\n", oe_result_str(static_cast<oe_result_t>(ret)));
-            break; // go to clean up stage
-        }
+    // Generate attested certificate and private key
+    ENCLAVE_LOG("[TLS Server] Generating attested certificate...\n");
 
-        // Setup TLS configuration based on generated server certificate
-        ENCLAVE_LOG("[TLS Server] Configuring mBedTLS ssl config...\n");
-        ret = setup_tls_config(&ssl_config, &server_cert, &pkey, &ctr_drbg, &cache);
-        if (ret != OE_OK) {
-            ENCLAVE_LOG("[TLS Server] Failed to set up TLS configuration\n");
-            break;
-        }
+    ret = openssl_utility::generate_certificate_and_pkey(&certificate, &pkey, subject_name);
+    if (ret != OE_OK) {
+        ENCLAVE_LOG("[TLS Server] Failed to generate attested certificate: %s\n", oe_result_str(static_cast<oe_result_t>(ret)));
+        goto exit;
+    }
 
-        // TODO: accept new clients + handle connection
-        ENCLAVE_LOG("[TLS Server] Creating and binding listening socket...\n");
+    // Set certificate and private key in SSL context
+    if (SSL_CTX_use_certificate(ssl_server_ctx, certificate) <= 0) {
+        ENCLAVE_LOG("[TLS Server] Failed to set certificate\n");
+        ERR_print_errors_fp(stderr);
+        ret = OE_FAILURE;
+        goto exit;
+    }
 
-        ret = 0; // reset any error before returning!
-    } while (false);
+    if (SSL_CTX_use_PrivateKey(ssl_server_ctx, pkey) <= 0) {
+        ENCLAVE_LOG("[TLS Server] Failed to set private key\n");
+        ERR_print_errors_fp(stderr);
+        ret = OE_FAILURE;
+        goto exit;
+    }
 
-    // free resource (if needed)
-    mbedtls_net_free(&listen_fd);
-    mbedtls_x509_crt_free(&server_cert);
-    mbedtls_pk_free(&pkey);
-    mbedtls_ssl_free(&ssl_ctx);
-    mbedtls_ssl_config_free(&ssl_config);
-    mbedtls_ssl_cache_free(&cache);
-    mbedtls_ctr_drbg_free(&ctr_drbg);
-    mbedtls_entropy_free(&entropy);
+    // Verify that private key matches certificate
+    if (!SSL_CTX_check_private_key(ssl_server_ctx)) {
+        ENCLAVE_LOG("[TLS Server] Private key does not match certificate\n");
+        ERR_print_errors_fp(stderr);
+        ret = OE_FAILURE;
+        goto exit;
+    }
+
+    ENCLAVE_LOG("[TLS Server] Certificate and private key configured successfully\n");
+
+    // Create and bind listening socket
+    if (create_listener_socket(port_number, server_socket_fd) != 0) {
+        ENCLAVE_LOG("[TLS Server] Unable to create listener socket\n");
+        ret = OE_FAILURE;
+        goto exit;
+    }
+
+    // Signal to host that server is ready
+    ocall_server_ready();
+
+    // Handle client connections
+    ret = handle_communication_until_done(
+        server_socket_fd,
+        client_socket_fd,
+        ssl_server_ctx,
+        ssl_session,
+        keep_server_up);
+
+    if (ret != 0) {
+        ENCLAVE_LOG("[TLS Server] Communication error: %d\n", ret);
+        goto exit;
+    }
+
+    ret = OE_OK;
+
+exit:
+    // Cleanup
+    if (client_socket_fd >= 0) {
+        close(client_socket_fd);
+    }
+    if (server_socket_fd >= 0) {
+        close(server_socket_fd);
+    }
+    if (ssl_session != nullptr) {
+        SSL_shutdown(ssl_session);
+        SSL_free(ssl_session);
+    }
+    if (ssl_server_ctx != nullptr) {
+        SSL_CTX_free(ssl_server_ctx);
+    }
+    if (certificate != nullptr) {
+        X509_free(certificate);
+    }
+    if (pkey != nullptr) {
+        EVP_PKEY_free(pkey);
+    }
+
     oe_verifier_shutdown();
 
     ENCLAVE_LOG("[TLS Server] Server shutdown complete\n");

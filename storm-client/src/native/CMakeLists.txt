@@ -25,7 +25,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
 
 # Crypto lib same as sample convention (mbedtls/openssl)
-set(OE_CRYPTO_LIB mbedtls
+set(OE_CRYPTO_LIB openssl
         CACHE STRING "Crypto lib for enclaves (mbedtls|openssl)")
 
 # additional config

@@ -7,7 +7,7 @@ add_oe_enclave(
         TRUSTED_SOURCES
             "${CMAKE_CURRENT_SOURCE_DIR}/atls_server_impl.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/oe_enclave_utility.cpp"
-            "${CMAKE_SOURCE_DIR}/common/mbedtls_utility.cpp"
+            "${CMAKE_SOURCE_DIR}/common/openssl_utility.cpp"
             "${CMAKE_SOURCE_DIR}/common/oe_utility.cpp"
 )
 

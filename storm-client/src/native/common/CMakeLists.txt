@@ -8,6 +8,9 @@ add_library(oe_common STATIC
         ${CMAKE_CURRENT_SOURCE_DIR}/mbedtls_utility.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/mbedtls_utility.h
 
+        ${CMAKE_CURRENT_SOURCE_DIR}/openssl_utility.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/openssl_utility.h
+
         ${CMAKE_CURRENT_SOURCE_DIR}/oe_utility.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/oe_utility.h
 
