@@ -62,6 +62,11 @@ function(add_oe_enclave)
             --untrusted-dir "${_gen_untrusted}"
             COMMENT "oeedger8r (untrusted) ${AOE_EDL}"
             VERBATIM)
+    set_source_files_properties(
+            "${_gen_untrusted}/${AOE_NAME}_u.c"
+            "${_gen_untrusted}/${AOE_NAME}_u.h"
+            "${_gen_untrusted}/${AOE_NAME}_args.h"
+            PROPERTIES GENERATED TRUE)
 
     # generator target for untrusted stubs (needed to let the host generate these files at runtime!)
     add_custom_target(gen_u_${AOE_NAME}
@@ -73,6 +78,11 @@ function(add_oe_enclave)
 
     # Export generator + paths globally for host
     set_property(GLOBAL APPEND PROPERTY OE_ALL_U_GEN_TARGETS gen_u_${AOE_NAME})
+    set(_host_stub_target "${AOE_NAME}_host_stubs")
+    add_library(${_host_stub_target} INTERFACE)
+    target_sources(${_host_stub_target} INTERFACE "${_gen_untrusted}/${AOE_NAME}_u.c")
+    target_include_directories(${_host_stub_target} INTERFACE "${_gen_untrusted}")
+    add_dependencies(${_host_stub_target} gen_u_${AOE_NAME})
 
     get_property(_acc_u GLOBAL PROPERTY OE_ALL_UNTRUSTED_STUBS)
     list(APPEND _acc_u "${_gen_untrusted}/${AOE_NAME}_u.c")

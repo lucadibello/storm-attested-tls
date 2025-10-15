@@ -23,3 +23,8 @@ target_link_libraries(${ENCLAVE_NAME} PRIVATE
     openenclave::oehostsock # OpenEnclave socket support
     openenclave::oehostresolver # OpenEnclave DNS resolver support
 )
+
+# Expose commonly reused metadata to the bundle-level scope so the host can
+# link against the generated untrusted stubs without re-discovering paths.
+set(ENCLAVE_TARGET "${ENCLAVE_NAME}" PARENT_SCOPE)
+set(ENCLAVE_HOST_STUB_TARGET "${ENCLAVE_NAME}_host_stubs" PARENT_SCOPE)
