@@ -1,10 +1,13 @@
 #include "mbedtls_utility.h"
 
+#include <cstdio>
 #include <oe_utility.h>
 #include <openenclave/attestation/sgx/evidence.h>
 
 // SGX Remote Attestation UUID.
 static oe_uuid_t _uuid_sgx_ecdsa = {OE_FORMAT_UUID_SGX_ECDSA};
+
+namespace mbedtls_utility {
 
 oe_result_t generate_certificate_and_pkey(
     mbedtls_x509_crt* certificate,
@@ -88,3 +91,4 @@ exit:
     return result;
 }
 
+} // namespace mbedtls_utility

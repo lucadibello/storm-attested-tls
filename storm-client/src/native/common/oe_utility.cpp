@@ -95,9 +95,10 @@ bool verify_signer_id(
 
 oe_result_t load_oe_modules()
 {
-    oe_result_t result;
+    oe_result_t result = OE_OK;
 
-    // Explicitly enabling features
+#ifndef OE_BUILD_ENCLAVE
+    // Host-side: load host resolver and socket interface
     if ((result = oe_load_module_host_resolver()) != OE_OK)
     {
         printf(
@@ -112,6 +113,11 @@ oe_result_t load_oe_modules()
             oe_result_str(result));
         return result;
     }
+#else
+    // Enclave-side: these modules are loaded automatically or not needed
+    // The enclave uses ocalls for socket operations instead
+    printf("Enclave: socket operations will use ocalls\n");
+#endif
 
     return result;
 }
