@@ -1,10 +1,12 @@
-#include <cstdint>
 #include <string>
 #include <thread>
 #include <chrono>
 #include <atomic>
 #include <cstring>
+#include <sys/stat.h>
 
+#include <openenclave/host.h>
+#include <openenclave/trace.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
@@ -16,11 +18,70 @@
 using namespace oe_common;
 
 std::atomic<bool> g_server_ready(false);
+FILE* g_enclave_log_file(nullptr);
+FILE* g_host_log_file(nullptr);
 
 void print_usage(const char *program_name) {
     spdlog::error("Usage: {} [--simulate] <enclave_image_path> -port:<port>", program_name);
     spdlog::error("  --simulate    Run in simulation mode");
     spdlog::error("  -port:<port>  Port number for the TLS server (e.g., -port:8443)");
+}
+
+// === Host calls
+void host_customized_log(
+    void* context,
+    const bool is_enclave,
+    const tm* t,
+    const long int u_secs,
+    const oe_log_level_t level,
+    const uint64_t host_thread_id,
+    const char* message)
+{
+    char time[25];
+    strftime(time, sizeof(time), "%Y-%m-%dT%H:%M:%S%z", t);
+
+    FILE* log_file = nullptr;
+    if (level >= OE_LOG_LEVEL_WARNING)
+    {
+        log_file = static_cast<FILE *>(context);
+    }
+    else
+    {
+        log_file = stderr;
+    }
+
+    fprintf(
+        log_file,
+        "%s.%06ld, %s, %s, %lx, %s",
+        time,
+        u_secs,
+        (is_enclave ? "E" : "H"),
+        oe_log_level_strings[level],
+        host_thread_id,
+        message);
+}
+
+const char* extract_log_dir(int *argc, const char *argv[]) {
+    for (int i = 0; i < *argc - 1; i++) {
+        if (strcmp(argv[i], "--log-dir") == 0) {
+            const char* log_dir = argv[i + 1];
+            memmove(&argv[i], &argv[i + 2], (*argc - i - 1) * sizeof(char *));
+            (*argc) -= 2;
+            return log_dir;
+        }
+    }
+    return "log"; // default directory
+}
+
+bool create_directory(const char* dir_path) {
+    struct stat st = {};
+    if (stat(dir_path, &st) == -1) {
+        if (mkdir(dir_path, 0755) != 0) {
+            fprintf(stderr, "Error: Failed to create log directory\n");
+            return false;
+        }
+    }
+    return true;
 }
 
 oe_enclave_t *create_enclave(const char *enclave_path, const uint32_t flags) {
@@ -134,11 +195,47 @@ int main(const int argc, const char *argv[]) {
     logger->set_level(spdlog::level::debug);
     spdlog::set_default_logger(logger);
 
-    spdlog::info("");
-    spdlog::info("========================================");
-    spdlog::info("Attested TLS Server Demo");
-    spdlog::info("========================================");
-    spdlog::info("");
+    // create log directories
+    constexpr char base_dir[] = "log";
+    constexpr char log_dir_enclave[] = "log/enclave";
+    constexpr char log_dir_host[] = "log/host";
+    if (!create_directory(base_dir) ||
+        !create_directory(log_dir_enclave) ||
+        !create_directory(log_dir_host))
+    {
+        spdlog::error("An error occurred while creating log directory");
+        return 1;
+    }
+
+    // Generate timestamp for log filenames
+    const time_t now = time(nullptr);
+    const tm* time_info = localtime(&now);
+    char timestamp[20];
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", time_info);
+
+    // Create timestamped filename for host logs
+    char host_log_filename[256];
+    snprintf(host_log_filename, sizeof(host_log_filename), "%s/oe_host_out_%s.txt", log_dir_host, timestamp);
+
+    // set log callback for host
+    g_host_log_file = fopen(host_log_filename, "w");
+    if (!g_host_log_file) {
+        spdlog::error("An error occurred while creating log directory {}", host_log_filename);
+        return 1;
+    }
+    oe_log_set_callback(g_host_log_file, host_customized_log);
+
+    // set log callback on enclave
+    // open file for enclave logs
+    char enclave_log_filename[256];
+    snprintf(enclave_log_filename, sizeof(host_log_filename), "%s/oe_enclave_out_%s.txt", log_dir_enclave, timestamp);
+
+    g_enclave_log_file = fopen(enclave_log_filename, "w");
+    if (!g_enclave_log_file) {
+        spdlog::error("An error occurred while creating log directory {}", host_log_filename);
+        fclose(g_host_log_file); // close other log file
+        return 1;
+    }
 
     // Use ArgumentParser to parse command-line arguments
     ArgumentParser parser(argc, argv);
@@ -183,6 +280,16 @@ int main(const int argc, const char *argv[]) {
     spdlog::info("✓ Enclave created successfully");
     spdlog::info("");
 
+    // Set callback for enclave logs
+    if (ecall_set_log_callback(atls_server_enclave) != OE_OK) {
+        spdlog::error("Failed to set log callback.");
+        // close both files + destroy enclave
+        fclose(g_enclave_log_file);
+        fclose(g_host_log_file);
+        EnclaveManager::destroy_enclave(atls_server_enclave);
+    }
+    spdlog::info("Configured enclave callback successfully. Logging to {}", enclave_log_filename);
+
     // Start server in a separate thread
     std::thread server_thread(run_server, atls_server_enclave, server_port);
 
@@ -190,7 +297,7 @@ int main(const int argc, const char *argv[]) {
     // const bool test_passed = run_connectivity_test(port_number);
 
     // Give server a moment to handle the connection
-    std::this_thread::sleep_for(std::chrono::seconds(20));
+    std::this_thread::sleep_for(std::chrono::seconds(180));
 
     //spdlog::info("Waiting for server to complete...");
     // spdlog::info("(Press Ctrl+C to stop if server is in continuous mode)");
@@ -214,5 +321,9 @@ int main(const int argc, const char *argv[]) {
     }
 
     spdlog::debug("Bye!");
+
+    // close all files
+    fclose(g_host_log_file);
+    fclose(g_enclave_log_file);
     return 0;
 }

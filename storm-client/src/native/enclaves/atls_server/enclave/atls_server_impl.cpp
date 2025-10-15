@@ -1,5 +1,6 @@
 #include <cassert>
 #include <openenclave/enclave.h>
+#include <openenclave/tracee.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/net_sockets.h>
@@ -10,11 +11,11 @@
 #include <mbedtls/platform.h>
 #include <sys/socket.h>
 
-#include <arpa/inet.h>
 #include <cstdio>
 #include <cstring>
 #include <mbedtls_utility.h>
 #include <oe_enclave_utility.h>
+#include <openenclave/log.h>
 #include <openenclave/attestation/verifier.h>
 
 #include "atls_server_t.h"
@@ -132,6 +133,46 @@ static int setup_tls_config(
     return ret;
 }
 
+void enclave_customized_log(
+    void* context,
+    const oe_log_level_t level,
+    const uint64_t thread_id,
+    const char* message)
+{
+    char modified_log[200];
+
+    sprintf(
+        modified_log,
+        "E, %s, %lx, %s",
+        oe_log_level_strings[level],
+        thread_id,
+        message);
+
+    /*
+     * Add logic here to modify the log message, to obscure enclave logs from
+     * the host. The context might be used, for example, to transfer a
+     * shared/public/private secret, that may be used to encrypt the log
+     * message.
+     *
+     * NOTE: Do not use operations based on OE's host filesystem support
+     * in this function, they do not work consistently. If used, the
+     * logs generated after oe_terminate_enclave() cause the program to crash
+     * with a segmentation fault (issue #4349).
+     */
+    OE_UNUSED(context);
+
+    /* invoke ocall to copy enclave logs to file */
+    const oe_result_t result = ocall_transfer_logs_to_file(modified_log, strlen(modified_log));
+    OE_UNUSED(result);
+}
+
+// ECALL to set handler
+extern "C" void ecall_set_log_callback()
+{
+    // make sure that logs use the enclave_customized_log function
+    oe_enclave_log_set_callback(nullptr, enclave_customized_log);
+}
+
 // Main ECALL: Set up and run the TLS server
 extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
     int ret = OE_FAILURE;
@@ -164,8 +205,6 @@ extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
     mbedtls_pk_context pkey;
     mbedtls_ssl_cache_context cache;
     mbedtls_net_context listen_fd;
-
-    sockaddr_in serv_addr = {};
 
     // Initialize mbedTLS structures
     mbedtls_net_init(&listen_fd);
