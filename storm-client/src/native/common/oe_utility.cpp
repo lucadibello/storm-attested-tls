@@ -92,34 +92,4 @@ bool verify_signer_id(
     }
     return true;
 }
-
-oe_result_t load_oe_modules()
-{
-    oe_result_t result = OE_OK;
-
-#ifndef OE_BUILD_ENCLAVE
-    // Host-side: load host resolver and socket interface
-    if ((result = oe_load_module_host_resolver()) != OE_OK)
-    {
-        printf(
-            "oe_load_module_host_resolver failed with %s\n",
-            oe_result_str(result));
-        return result;
-    }
-    if ((result = oe_load_module_host_socket_interface()) != OE_OK)
-    {
-        printf(
-            "oe_load_module_host_socket_interface failed with %s\n",
-            oe_result_str(result));
-        return result;
-    }
-#else
-    // Enclave-side: these modules are loaded automatically or not needed
-    // The enclave uses ocalls for socket operations instead
-    printf("Enclave: socket operations will use ocalls\n");
-#endif
-
-    return result;
-}
-
 }
