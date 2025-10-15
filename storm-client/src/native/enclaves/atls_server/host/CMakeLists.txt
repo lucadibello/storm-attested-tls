@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.20)
-project(oe_host LANGUAGES C CXX)
+# Host configuration for the ATLS server bundle. Shared variables such as
+# ENCLAVE_NAME and ENCLAVE_SIGNED_OUTPUT are provided by the bundle-level
+# CMakeLists.txt.
 
-find_package(OpenEnclave CONFIG REQUIRED)
+# Dependencies specific to the host side.
 find_package(JNI REQUIRED)
 find_package(spdlog REQUIRED)
 
@@ -91,7 +92,7 @@ if (BUILD_HOST_EXE)
 
     # Auto-detect the signed enclave path if not specified
     if (OE_TEST_ENCLAVE_PATH STREQUAL "")
-        set(OE_TEST_ENCLAVE_PATH "${ARTIFACTS_DIR}/enclaves/atls_server/atls_server.signed")
+        set(OE_TEST_ENCLAVE_PATH "${ENCLAVE_SIGNED_OUTPUT}")
     endif ()
 
     # Build the command line arguments

@@ -86,9 +86,8 @@ include(OOEnclave)  # provides add_oe_enclave()
 # --- Common utilities library (shared across hosts/clients) ---
 add_subdirectory(common)
 
-# --- Enclave with its dedicated host ---
-add_subdirectory(enclaves/atls_server/enclave)
-add_subdirectory(enclaves/atls_server/host)
+# --- Enclave bundles ---
+add_subdirectory(enclaves/atls_server)
 
 # --- utility/QoL targets
 
