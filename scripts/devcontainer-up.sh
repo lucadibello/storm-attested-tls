@@ -15,6 +15,9 @@ if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
   "${SCRIPT_DIR}/devcontainer-build.sh"
 fi
 
+# FIXME:  we need to add aesmd service on the cluster in order to have remote attestation work!
+# -v /var/run/aesmd:/var/run/aesmd
+
 if docker ps -a --format '{{.Names}}' | grep -qx "${CONTAINER_NAME}"; then
   echo "Container ${CONTAINER_NAME} already exists. Starting…"
   docker start "${CONTAINER_NAME}" >/dev/null
