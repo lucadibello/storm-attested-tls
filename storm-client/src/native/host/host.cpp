@@ -1,6 +1,3 @@
-// Copyright (c) Open Enclave SDK contributors.
-// Licensed under the MIT License.
-
 #include <cstdint>
 #include <string>
 #include <thread>
