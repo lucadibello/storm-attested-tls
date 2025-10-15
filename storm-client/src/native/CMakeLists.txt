@@ -20,9 +20,6 @@ project("OE - Attested TLS Server" LANGUAGES C CXX)
 
 # --- Open Enclave ---
 find_package(OpenEnclave CONFIG REQUIRED)
-if (NOT DEFINED OE_INCLUDEDIR) # fallback if not present in older systems
-    set(OE_INCLUDEDIR "${OpenEnclave_INCLUDE_DIRS}")
-endif ()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)

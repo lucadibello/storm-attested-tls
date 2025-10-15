@@ -21,6 +21,17 @@
 #include "atls_server_t.h"
 #include "consts.h"
 
+// Custom logging macro that sends logs through OCALL
+#define ENCLAVE_LOG(fmt, ...) do { \
+    char log_buf[256]; \
+    int written = snprintf(log_buf, sizeof(log_buf), fmt, ##__VA_ARGS__); \
+    if (written > 0) { \
+        ocall_transfer_logs_to_file(log_buf, (written < sizeof(log_buf)) ? written : sizeof(log_buf) - 1); \
+    } \
+    printf(fmt, ##__VA_ARGS__); \
+    fflush(stdout); \
+} while(0)
+
 static void my_debug(
     void* ctx,
     const int level,
@@ -49,7 +60,7 @@ static int verify_certificate(
 
     (void)data;
 
-    printf(LOG_PREFIX_TLS_SERVER "Verifying certificate at depth %d\n", depth);
+    ENCLAVE_LOG("[TLS Server] Verifying certificate at depth %d\n", depth);
 
     // Only verify the leaf certificate (depth 0)
     if (depth != 0) {
@@ -68,11 +79,11 @@ static int verify_certificate(
         nullptr);
 
     if (result != OE_OK) {
-        printf(LOG_PREFIX_TLS_SERVER "Certificate verification failed: %d\n", result);
+        ENCLAVE_LOG("[TLS Server] Certificate verification failed: %d\n", result);
         *flags |= MBEDTLS_X509_BADCERT_OTHER;
         ret = MBEDTLS_ERR_X509_CERT_VERIFY_FAILED;
     } else {
-        printf(LOG_PREFIX_TLS_SERVER "Certificate verified successfully\n");
+        ENCLAVE_LOG("[TLS Server] Certificate verified successfully\n");
     }
 
     return ret;
@@ -85,7 +96,7 @@ static int setup_tls_config(
     mbedtls_ctr_drbg_context* ctr_drbg,
     mbedtls_ssl_cache_context* cache) {
 
-    printf(LOG_PREFIX_TLS_SERVER "Setting up TLS configuration\n");
+    ENCLAVE_LOG("[TLS Server] Setting up TLS configuration\n");
 
     // Initialize SSL configuration
     int ret = mbedtls_ssl_config_defaults(
@@ -94,7 +105,7 @@ static int setup_tls_config(
         MBEDTLS_SSL_TRANSPORT_STREAM,
         MBEDTLS_SSL_PRESET_DEFAULT);
     if (ret != 0) {
-        printf(LOG_PREFIX_TLS_SERVER "mbedtls_ssl_config_defaults failed: %d\n", ret);
+        ENCLAVE_LOG("[TLS Server] mbedtls_ssl_config_defaults failed: %d\n", ret);
         return ret;
     }
 
@@ -118,15 +129,12 @@ static int setup_tls_config(
     // Set certificate and private key
     ret = mbedtls_ssl_conf_own_cert(ssl_conf, server_cert, pkey);
     if (ret != 0) {
-        printf(LOG_PREFIX_TLS_SERVER "mbedtls_ssl_conf_own_cert failed: %d\n", ret);
+        ENCLAVE_LOG("[TLS Server] mbedtls_ssl_conf_own_cert failed: %d\n", ret);
         return ret;
     }
 
     // log + return success code
-    printf(LOG_PREFIX_TLS_SERVER "TLS configuration completed\n");
-
-    // flush stdout to ensure all logs are printed before returning
-    fflush(stdout);
+    ENCLAVE_LOG("[TLS Server] TLS configuration completed\n");
 
     // if we reach here, everything went fine (ret == 0)
     assert((void("Somehow ret is not equal to zero. Ensure that you handled all error branches properly!"), ret == 0));
@@ -143,7 +151,7 @@ void enclave_customized_log(
 
     sprintf(
         modified_log,
-        "E, %s, %lx, %s",
+        "E, %s, %lx, %s",  // No newline - message already has one
         oe_log_level_strings[level],
         thread_id,
         message);
@@ -176,24 +184,19 @@ extern "C" void ecall_set_log_callback()
 // Main ECALL: Set up and run the TLS server
 extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
     int ret = OE_FAILURE;
-    int server_fd = -1;
-    int reuse = 1;
-    int setsockopt_ret = 0;
-    int send_ret = 0;
-    int close_ret = 0;
 
     // validate + cast port number to correct type
     char* endptr = nullptr;
     long port_num = strtol(port, &endptr, 10);
     if (*endptr != '\0' || port_num <= 0 || port_num > 65535) {
-        fprintf(stderr, "Invalid port number: %s\n", port);
-        exit(EXIT_FAILURE);
+        ENCLAVE_LOG("[TLS Server] Invalid port number: %s\n", port);
+        return OE_INVALID_PARAMETER;
     }
 
     // load required oe modules
     ret = oe_enclave_utility::load_oe_modules();
     if (ret != OE_OK) {
-        printf(LOG_PREFIX_TLS_SERVER "loading required Open Enclave modules failed\n");
+        ENCLAVE_LOG("[TLS Server] loading required Open Enclave modules failed\n");
         return ret;
     }
 
@@ -220,10 +223,10 @@ extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
     // NOTE: this do-while(false) block is used to have a structured error handling
     // This is done to guarantee the cleanup without GOTO statements.
     do {
-        printf(LOG_PREFIX_TLS_SERVER "Starting attested TLS server on port %s\n", port);
+        ENCLAVE_LOG("[TLS Server] Starting attested TLS server on port %s\n", port);
 
         // Seed the RNG
-        printf(LOG_PREFIX_TLS_SERVER "Seeding random number generator\n");
+        ENCLAVE_LOG("[TLS Server] Seeding random number generator\n");
         ret = mbedtls_ctr_drbg_seed(
             &ctr_drbg,
             mbedtls_entropy_func,
@@ -231,12 +234,12 @@ extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
             reinterpret_cast<const unsigned char *>("tls_server"),
             strlen("tls_server"));
         if (ret != 0) {
-            printf(LOG_PREFIX_TLS_SERVER "mbedtls_ctr_drbg_seed failed: %d\n", ret);
+            ENCLAVE_LOG("[TLS Server] mbedtls_ctr_drbg_seed failed: %d\n", ret);
             break;
         }
 
         // Try to generate certificate with attestation
-        printf(LOG_PREFIX_TLS_SERVER "Generating attested certificate...\n");
+        ENCLAVE_LOG("[TLS Server] Generating attested certificate...\n");
 
         // FIXME: this has to be changed in the future. Now hard-coded.
         constexpr unsigned char certificate_subject_name[] =
@@ -247,24 +250,22 @@ extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
             "ST=Ticino,"
             "C=CH";
         ret = mbedtls_utility::generate_certificate_and_pkey(&server_cert, &pkey, certificate_subject_name);
-        printf(LOG_PREFIX_TLS_SERVER "Generated certificate and pkey. Result: %d\n", ret);
+        ENCLAVE_LOG("[TLS Server] Generated certificate and pkey. Result: %d\n", ret);
         if (ret != OE_OK) {
-            printf(LOG_PREFIX_TLS_SERVER "Failed to generate attested certificate. Error: %s\n", oe_result_str(static_cast<oe_result_t>(ret)));
+            ENCLAVE_LOG("[TLS Server] Failed to generate attested certificate. Error: %s\n", oe_result_str(static_cast<oe_result_t>(ret)));
             break; // go to clean up stage
         }
 
         // Setup TLS configuration based on generated server certificate
-        printf(LOG_PREFIX_TLS_SERVER "Configuring mBedTLS ssl config...\n");
+        ENCLAVE_LOG("[TLS Server] Configuring mBedTLS ssl config...\n");
         ret = setup_tls_config(&ssl_config, &server_cert, &pkey, &ctr_drbg, &cache);
         if (ret != OE_OK) {
-            printf(LOG_PREFIX_TLS_SERVER "Failed to set up TLS configuration\n");
+            ENCLAVE_LOG("[TLS Server] Failed to set up TLS configuration\n");
             break;
         }
 
         // TODO: accept new clients + handle connection
-        bool keep_server_up = true;
-        printf(LOG_PREFIX_TLS_SERVER "Creating and binding listening socket...\n");
-
+        ENCLAVE_LOG("[TLS Server] Creating and binding listening socket...\n");
 
         ret = 0; // reset any error before returning!
     } while (false);
@@ -280,6 +281,6 @@ extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
     mbedtls_entropy_free(&entropy);
     oe_verifier_shutdown();
 
-    printf(LOG_PREFIX_TLS_SERVER "Server shutdown complete\n");
+    ENCLAVE_LOG("[TLS Server] Server shutdown complete\n");
     return ret;
 }

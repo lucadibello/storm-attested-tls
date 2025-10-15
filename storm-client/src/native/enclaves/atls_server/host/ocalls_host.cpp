@@ -22,5 +22,12 @@ extern "C" void ocall_server_ready() {
 
 extern "C" void ocall_transfer_logs_to_file(const char* modified_log, const size_t size)
 {
-    fprintf(g_enclave_log_file, "%.*s", static_cast<int>(size), modified_log);
+    if (g_enclave_log_file) {
+        fprintf(g_enclave_log_file, "%.*s", static_cast<int>(size), modified_log);
+        fflush(g_enclave_log_file);  // Force immediate write to disk
+    } else {
+        // Debug: Log to stderr if file is not available
+        fprintf(stderr, "[OCALL_DEBUG] g_enclave_log_file is NULL! Message was: %.*s", static_cast<int>(size), modified_log);
+        fflush(stderr);
+    }
 }

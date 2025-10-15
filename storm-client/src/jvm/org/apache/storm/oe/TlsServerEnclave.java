@@ -3,7 +3,7 @@ package org.apache.storm.oe;
 public final class TlsServerEnclave {
     static {
         // loads liboe_jni.so/.dylib/.dll
-        System.loadLibrary("oe_jni");
+        System.loadLibrary("oe_atls_server_jni");
     }
 
     // NOTE: the following methods will be linked to the native methods defined in

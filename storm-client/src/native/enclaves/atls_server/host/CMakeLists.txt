@@ -43,35 +43,35 @@ if (BUILD_JNI_HOST)
         target_link_libraries(storm_atls_host PRIVATE dl)
     endif ()
     set_target_properties(storm_atls_host PROPERTIES
-            OUTPUT_NAME "oe_jni"
-            LIBRARY_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/host"
-            RUNTIME_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/host"
-            ARCHIVE_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/host"
+            OUTPUT_NAME "oe_host_atls_server_jni"
+            LIBRARY_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/enclaves/atls_server"
+            RUNTIME_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/enclaves/atls_server"
+            ARCHIVE_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/enclaves/atls_server"
     )
 endif ()
 
 # ---- Optional small CLI for testing
 if (BUILD_HOST_EXE)
-    add_executable(oe_cli
+    add_executable(tls_server_host
             host.cpp
             ocalls_host.cpp
     )
-    add_dependencies(oe_cli ${ENCLAVE_GEN_UNTRUSTED_TARGET})
-    target_include_directories(oe_cli PRIVATE
+    add_dependencies(tls_server_host ${ENCLAVE_GEN_UNTRUSTED_TARGET})
+    target_include_directories(tls_server_host PRIVATE
             ${OE_INCLUDEDIR}
             ${CMAKE_SOURCE_DIR}/common
             ${ENCLAVE_UNTRUSTED_INCLUDE_DIR}
     )
-    target_link_libraries(oe_cli PRIVATE
+    target_link_libraries(tls_server_host PRIVATE
             ${ENCLAVE_HOST_STUB_TARGET}
             openenclave::oehost
             spdlog::spdlog
             oe_common
     )
-    target_compile_features(oe_cli PRIVATE c_std_11 cxx_std_17)
+    target_compile_features(tls_server_host PRIVATE c_std_11 cxx_std_17)
 
     # Place executable in a predictable folder
-    set_target_properties(oe_cli PROPERTIES
+    set_target_properties(tls_server_host PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY "${ARTIFACTS_DIR}/host"
     )
 
@@ -95,17 +95,17 @@ if (BUILD_HOST_EXE)
 
     # `run` target to run the test host with configured flags
     add_custom_target(run
-            COMMAND "$<TARGET_FILE:oe_cli>" ${TEST_ARGS}
-            DEPENDS oe_cli ${ENCLAVE_TARGET} ${ENCLAVE_GEN_UNTRUSTED_TARGET}
+            COMMAND "$<TARGET_FILE:tls_server_host>" ${TEST_ARGS}
+            DEPENDS tls_server_host ${ENCLAVE_TARGET} ${ENCLAVE_GEN_UNTRUSTED_TARGET}
             WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-            COMMENT "Running test host: oe_cli ${TEST_ARGS}"
+            COMMENT "Running test host: tls_server_host ${TEST_ARGS}"
             VERBATIM
     )
 
     # Alternative `test_host` target with same behavior (more descriptive name)
     add_custom_target(test_host
-            COMMAND "$<TARGET_FILE:oe_cli>" ${TEST_ARGS}
-            DEPENDS oe_cli ${ENCLAVE_TARGET} ${ENCLAVE_GEN_UNTRUSTED_TARGET}
+            COMMAND "$<TARGET_FILE:tls_server_host>" ${TEST_ARGS}
+            DEPENDS tls_server_host ${ENCLAVE_TARGET} ${ENCLAVE_GEN_UNTRUSTED_TARGET}
             WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
             COMMENT "Testing host with enclave: ${OE_TEST_ENCLAVE_PATH} on port ${OE_TEST_PORT}"
             VERBATIM
