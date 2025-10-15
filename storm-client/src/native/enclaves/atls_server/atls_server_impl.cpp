@@ -13,7 +13,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mbedtls_utility.h>
-#include <oe_utility.h>
+#include <oe_enclave_utility.h>
 #include <openenclave/attestation/verifier.h>
 
 #include "atls_server_t.h"
@@ -65,7 +65,9 @@ static int enclave_recv(void* ctx, unsigned char* buf, size_t len) {
 
 // Certificate verification with attestation
 static int verify_certificate(
+    // ReSharper disable once CppParameterMayBeConstPtrOrRef
     void* data,
+    // ReSharper disable once CppParameterMayBeConstPtrOrRef
     mbedtls_x509_crt* crt,
     const int depth,
     uint32_t* flags) {
@@ -158,7 +160,7 @@ static int setup_tls_config(
 // Handle a single client connection
 static int handle_client_connection(
     int client_fd,
-    mbedtls_ssl_config* conf) {
+    const mbedtls_ssl_config* conf) {
 
     int ret = 0;
     mbedtls_ssl_context ssl;
@@ -250,7 +252,7 @@ extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
     mbedtls_ssl_cache_context cache;
     mbedtls_net_context listen_fd;
 
-    struct sockaddr_in serv_addr = {};
+    sockaddr_in serv_addr = {};
 
     // Initialize mbedTLS structures
     mbedtls_net_init(&listen_fd);
@@ -268,7 +270,7 @@ extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
     do {
         // load required oe modules
         /* Load host resolver and socket interface modules explicitly */
-        if (oe_common::load_oe_modules() != OE_OK)
+        if (oe_enclave_utility::load_oe_modules() != OE_OK)
         {
             printf(LOG_PREFIX_TLS_SERVER "loading required Open Enclave modules failed\n");
             break;
@@ -349,7 +351,7 @@ extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
 
         // Accept client connections
         do {
-            struct sockaddr_in client_addr;
+            sockaddr_in client_addr{};
             size_t client_addr_len_out = 0;
             int client_fd = -1;
 
