@@ -6,8 +6,9 @@
 find_package(JNI REQUIRED)
 find_package(spdlog REQUIRED)
 
-if (NOT DEFINED ENCLAVE_HOST_STUB_TARGET OR NOT DEFINED ENCLAVE_TARGET)
-    message(FATAL_ERROR "Host configuration requires ENCLAVE_HOST_STUB_TARGET and ENCLAVE_TARGET from the enclave subdirectory.")
+if (NOT DEFINED ENCLAVE_HOST_STUB_TARGET OR NOT DEFINED ENCLAVE_TARGET
+        OR NOT DEFINED ENCLAVE_UNTRUSTED_INCLUDE_DIR OR NOT DEFINED ENCLAVE_GEN_UNTRUSTED_TARGET)
+    message(FATAL_ERROR "Host configuration requires enclave metadata propagated by the enclave subdirectory.")
 endif ()
 
 # Ensure ARTIFACTS_DIR is defined (inherited from parent CMakeLists)
@@ -27,6 +28,7 @@ if (BUILD_JNI_HOST)
             ${JNI_INCLUDE_DIRS}
             ${CMAKE_SOURCE_DIR}/../../target/jni
             ${CMAKE_SOURCE_DIR}/common
+            ${ENCLAVE_UNTRUSTED_INCLUDE_DIR}
     )
     target_compile_features(storm_atls_host PRIVATE c_std_11 cxx_std_17)
     target_compile_definitions(storm_atls_host PRIVATE OE_API_VERSION=2)
@@ -36,6 +38,7 @@ if (BUILD_JNI_HOST)
             spdlog::spdlog
             oe_common
     )
+    add_dependencies(storm_atls_host ${ENCLAVE_GEN_UNTRUSTED_TARGET})
     if (UNIX AND NOT APPLE)
         target_link_libraries(storm_atls_host PRIVATE dl)
     endif ()
@@ -53,9 +56,11 @@ if (BUILD_HOST_EXE)
             host.cpp
             ocalls_host.cpp
     )
+    add_dependencies(oe_cli ${ENCLAVE_GEN_UNTRUSTED_TARGET})
     target_include_directories(oe_cli PRIVATE
             ${OE_INCLUDEDIR}
             ${CMAKE_SOURCE_DIR}/common
+            ${ENCLAVE_UNTRUSTED_INCLUDE_DIR}
     )
     target_link_libraries(oe_cli PRIVATE
             ${ENCLAVE_HOST_STUB_TARGET}
@@ -91,7 +96,7 @@ if (BUILD_HOST_EXE)
     # `run` target to run the test host with configured flags
     add_custom_target(run
             COMMAND "$<TARGET_FILE:oe_cli>" ${TEST_ARGS}
-            DEPENDS oe_cli ${ENCLAVE_TARGET}
+            DEPENDS oe_cli ${ENCLAVE_TARGET} ${ENCLAVE_GEN_UNTRUSTED_TARGET}
             WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
             COMMENT "Running test host: oe_cli ${TEST_ARGS}"
             VERBATIM
@@ -100,7 +105,7 @@ if (BUILD_HOST_EXE)
     # Alternative `test_host` target with same behavior (more descriptive name)
     add_custom_target(test_host
             COMMAND "$<TARGET_FILE:oe_cli>" ${TEST_ARGS}
-            DEPENDS oe_cli ${ENCLAVE_TARGET}
+            DEPENDS oe_cli ${ENCLAVE_TARGET} ${ENCLAVE_GEN_UNTRUSTED_TARGET}
             WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
             COMMENT "Testing host with enclave: ${OE_TEST_ENCLAVE_PATH} on port ${OE_TEST_PORT}"
             VERBATIM

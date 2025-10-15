@@ -11,8 +11,12 @@ add_oe_enclave(
             "${CMAKE_SOURCE_DIR}/common/oe_utility.cpp"
 )
 
+set(ENCLAVE_GENERATED_TRUSTED_DIR "${OE_LAST_TRUSTED_INCLUDE_DIR}")
+set(ENCLAVE_GENERATED_UNTRUSTED_DIR "${OE_LAST_UNTRUSTED_INCLUDE_DIR}")
+
 # Add include directories for the common headers
 target_include_directories(${ENCLAVE_NAME} PRIVATE
+        "${ENCLAVE_GENERATED_TRUSTED_DIR}"
         ${CMAKE_SOURCE_DIR}/common
         ${CMAKE_CURRENT_SOURCE_DIR} # any header preset in the current directory (const.h, oe_enclave_utility.h)
 )
@@ -26,5 +30,12 @@ target_link_libraries(${ENCLAVE_NAME} PRIVATE
 
 # Expose commonly reused metadata to the bundle-level scope so the host can
 # link against the generated untrusted stubs without re-discovering paths.
-set(ENCLAVE_TARGET "${ENCLAVE_NAME}" PARENT_SCOPE)
-set(ENCLAVE_HOST_STUB_TARGET "${ENCLAVE_NAME}_host_stubs" PARENT_SCOPE)
+set(ENCLAVE_TARGET "${OE_LAST_ENCLAVE_TARGET}")
+set(ENCLAVE_HOST_STUB_TARGET "${OE_LAST_HOST_STUB_TARGET}")
+set(ENCLAVE_GEN_UNTRUSTED_TARGET "${OE_LAST_UNTRUSTED_GEN_TARGET}")
+
+set(ENCLAVE_TARGET "${ENCLAVE_TARGET}" PARENT_SCOPE)
+set(ENCLAVE_HOST_STUB_TARGET "${ENCLAVE_HOST_STUB_TARGET}" PARENT_SCOPE)
+set(ENCLAVE_UNTRUSTED_INCLUDE_DIR "${ENCLAVE_GENERATED_UNTRUSTED_DIR}" PARENT_SCOPE)
+set(ENCLAVE_TRUSTED_INCLUDE_DIR "${ENCLAVE_GENERATED_TRUSTED_DIR}" PARENT_SCOPE)
+set(ENCLAVE_GEN_UNTRUSTED_TARGET "${ENCLAVE_GEN_UNTRUSTED_TARGET}" PARENT_SCOPE)

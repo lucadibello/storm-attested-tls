@@ -144,4 +144,12 @@ function(add_oe_enclave)
 
     # Export signed target list (for sign_all convenience)
     set_property(GLOBAL APPEND PROPERTY OE_ALL_SIGNED_TARGETS ${AOE_NAME})
+
+    # Surface metadata so bundle-level CMakeLists can reference the generated
+    # artifacts without duplicating logic.
+    set(OE_LAST_ENCLAVE_TARGET "${AOE_NAME}" PARENT_SCOPE)
+    set(OE_LAST_HOST_STUB_TARGET "${_host_stub_target}" PARENT_SCOPE)
+    set(OE_LAST_UNTRUSTED_INCLUDE_DIR "${_gen_untrusted}" PARENT_SCOPE)
+    set(OE_LAST_TRUSTED_INCLUDE_DIR "${_gen_trusted}" PARENT_SCOPE)
+    set(OE_LAST_UNTRUSTED_GEN_TARGET "gen_u_${AOE_NAME}" PARENT_SCOPE)
 endfunction()
