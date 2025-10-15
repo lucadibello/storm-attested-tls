@@ -81,7 +81,7 @@ extern "C" int ocall_close(const int fd) {
 }
 
 // Set socket options OCALL
-extern "C" int ocall_sEtsockopt(
+extern "C" int ocall_setsockopt(
     const int sockfd,
     const int level,
     const int optname,
