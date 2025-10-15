@@ -33,30 +33,6 @@ static void my_debug(
     fflush(static_cast<FILE *>(ctx));
 }
 
-// Helper: socket send callback for mbedTLS
-static int enclave_send(void* ctx, const unsigned char* buf, size_t len) {
-    int fd = *static_cast<int*>(ctx);
-    size_t bytes_sent = 0;
-    oe_result_t ocall_res = ocall_send(&bytes_sent, fd, buf, len, 0);
-
-    if (ocall_res != OE_OK || bytes_sent == 0) {
-        return MBEDTLS_ERR_NET_SEND_FAILED;
-    }
-
-    return static_cast<int>(bytes_sent);
-}
-
-// Helper: socket receive callback for mbedTLS
-static int enclave_recv(void* ctx, unsigned char* buf, size_t len) {
-    const int fd = *static_cast<int*>(ctx);
-    size_t bytes_received = 0;
-    oe_result_t ocall_res = ocall_recv(&bytes_received, fd, buf, len, 0);
-
-    if (ocall_res != OE_OK || bytes_received == 0) return MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY;
-
-    return static_cast<int>(bytes_received);
-}
-
 // Certificate verification with attestation
 static int verify_certificate(
     // ReSharper disable once CppParameterMayBeConstPtrOrRef
@@ -156,77 +132,6 @@ static int setup_tls_config(
     return ret;
 }
 
-// Handle a single client connection
-static int handle_client_connection(
-    int client_fd,
-    const mbedtls_ssl_config* ssl_conf) {
-
-    int ret = 0;
-    mbedtls_ssl_context ssl_ctx;
-    unsigned char buf[READ_BUFFER_SIZE];
-
-    mbedtls_ssl_init(&ssl_ctx);
-
-    printf(LOG_PREFIX_TLS_SERVER "Setting up SSL session\n");
-
-    do {
-        ret = mbedtls_ssl_setup(&ssl_ctx, ssl_conf);
-        if (ret != 0) {
-            printf(LOG_PREFIX_TLS_SERVER "mbedtls_ssl_setup failed: %d\n", ret);
-            break;
-        }
-
-        // Set I/O functions
-        mbedtls_ssl_set_bio(&ssl_ctx, &client_fd, enclave_send, enclave_recv, nullptr);
-
-        printf(LOG_PREFIX_TLS_SERVER "Performing TLS handshake\n");
-
-        // Perform handshake
-        while ((ret = mbedtls_ssl_handshake(&ssl_ctx)) != 0) {
-            if (ret != MBEDTLS_ERR_SSL_WANT_READ &&
-                ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-                printf(LOG_PREFIX_TLS_SERVER "mbedtls_ssl_handshake failed: -0x%x\n", -ret);
-                break;
-            }
-        }
-
-        printf(LOG_PREFIX_TLS_SERVER "TLS handshake completed successfully\n");
-        printf(LOG_PREFIX_TLS_SERVER "Waiting for client data\n");
-
-        // Read data from client
-        memset(buf, 0, sizeof(buf));
-        if (int len = mbedtls_ssl_read(&ssl_ctx, buf, sizeof(buf) - 1); len > 0) {
-            printf(LOG_PREFIX_TLS_SERVER "Received %d bytes from client: %s\n", len, reinterpret_cast<char *>(buf));
-
-            // Send response with enclave secret
-            const auto response = TLS_ENCLAVE_SECRET_DATA;
-            len = mbedtls_ssl_write(&ssl_ctx, reinterpret_cast<const unsigned char *>(response), strlen(response));
-
-            if (len > 0) {
-                printf(LOG_PREFIX_TLS_SERVER "Sent %d bytes to client\n", len);
-            } else {
-                printf(LOG_PREFIX_TLS_SERVER "mbedtls_ssl_write failed: %d\n", len);
-            }
-        } else if (len == 0 || len == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
-            printf(LOG_PREFIX_TLS_SERVER "Client closed connection\n");
-        } else {
-            printf(LOG_PREFIX_TLS_SERVER "mbedtls_ssl_read failed: %d\n", len);
-        }
-
-        printf(LOG_PREFIX_TLS_SERVER "Closing client connection\n");
-        mbedtls_ssl_close_notify(&ssl_ctx);
-    } while (false);
-
-    // in any case, run the cleanup routine
-    mbedtls_ssl_free(&ssl_ctx);
-    {
-        int close_ret_client = -1;
-        (void)ocall_close(&close_ret_client, client_fd);
-        (void)close_ret_client;
-    }
-    return ret;
-}
-
 // Main ECALL: Set up and run the TLS server
 extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
     int ret = OE_FAILURE;
@@ -317,71 +222,13 @@ extern "C" int ecall_set_up_tls_server(char* port, bool keep_server_up) {
             break;
         }
 
-        // Create server socket
-        printf(LOG_PREFIX_TLS_SERVER "Creating server socket...\n");
-        if (ocall_socket(&server_fd, AF_INET, SOCK_STREAM, 0) != OE_OK || server_fd < 0) {
-            printf(LOG_PREFIX_TLS_SERVER "ocall_socket failed\n");
-            break;
-        }
+        // TODO: accept new clients + handle connection
+        bool keep_server_up = true;
+        printf(LOG_PREFIX_TLS_SERVER "Creating and binding listening socket...\n");
 
-        // Set socket options
-        (void)ocall_setsockopt(&setsockopt_ret, server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-        (void)setsockopt_ret; // best-effort
 
-        // Bind to port
-        printf(LOG_PREFIX_TLS_SERVER "Binding to port %s\n", port);
-        serv_addr.sin_family = AF_INET;
-        serv_addr.sin_addr.s_addr = INADDR_ANY;
-        serv_addr.sin_port = htons(static_cast<uint16_t>(port_num));
-
-        if (ocall_bind(&ret, server_fd, &serv_addr, sizeof(serv_addr)) != OE_OK || ret != 0) {
-            printf(LOG_PREFIX_TLS_SERVER "ocall_bind failed\n");
-            break;
-        }
-
-        // Listen for connections
-        printf(LOG_PREFIX_TLS_SERVER "Listening for connections\n");
-        if (ocall_listen(&ret, server_fd, 5) != OE_OK || ret != 0) {
-            printf(LOG_PREFIX_TLS_SERVER "ocall_listen failed\n");
-            break;
-        }
-
-        printf(LOG_PREFIX_TLS_SERVER "✓ Server ready and listening on port %s\n", port);
-
-        // Signal host that server is ready to accept
-        ocall_server_ready();
-
-        // Accept client connections
-        do {
-            sockaddr_in client_addr{};
-            size_t client_addr_len_out = 0;
-
-            printf(LOG_PREFIX_TLS_SERVER "Waiting for client connection...\n");
-
-            int client_fd = -1;
-            if (ocall_accept(&client_fd,
-                             server_fd,
-                             &client_addr,
-                             sizeof(client_addr),
-                             &client_addr_len_out) != OE_OK || client_fd < 0) {
-                printf(LOG_PREFIX_TLS_SERVER "ocall_accept failed\n");
-                break;
-            }
-
-            printf(LOG_PREFIX_TLS_SERVER "✓ Client connected from %s\n",
-                   inet_ntoa(client_addr.sin_addr));
-
-            // Handle with TLS and attestation
-            handle_client_connection(client_fd, &ssl_config);
-        } while (keep_server_up);
-        ret = 0;
+        ret = 0; // reset any error before returning!
     } while (false);
-
-    // Cleanup
-    if (server_fd >= 0) {
-        (void)ocall_close(&close_ret, server_fd);
-        (void)close_ret;
-    }
 
     // free resource (if needed)
     mbedtls_net_free(&listen_fd);

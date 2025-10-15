@@ -5,7 +5,8 @@
 #ifndef OE_ATTESTED_TLS_SERVER_MBEDTLS_UTILITY_H
 #define OE_ATTESTED_TLS_SERVER_MBEDTLS_UTILITY_H
 
-#include <openenclave/3rdparty/mbedtls/x509_crt.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/x509_crt.h>
 #include <openenclave/enclave.h>
 
 namespace mbedtls_utility {

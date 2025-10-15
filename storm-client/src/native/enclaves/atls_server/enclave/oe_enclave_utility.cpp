@@ -1,7 +1,3 @@
-//
-// Created by luca on 10/15/25.
-//
-
 #include "oe_enclave_utility.h"
 
 #include <cstdio>

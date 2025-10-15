@@ -13,9 +13,6 @@ add_library(oe_common STATIC
 
         ${CMAKE_CURRENT_SOURCE_DIR}/enclave_manager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/enclave_manager.h
-
-        ${CMAKE_CURRENT_SOURCE_DIR}/mbedtls_utility.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/mbedtls_utility.h
 )
 
 target_include_directories(oe_common PUBLIC

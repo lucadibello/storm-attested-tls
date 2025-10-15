@@ -85,11 +85,10 @@ include(OOEnclave)  # provides add_oe_enclave()
 
 # --- Common utilities library (shared across hosts/clients) ---
 add_subdirectory(common)
-# --- Enclave (hosting the attested TLS server) ---
-add_subdirectory(enclaves/atls_server)
 
-# --- Host (for testing / JNI lib) ---
-add_subdirectory(host)
+# --- Enclave with its dedicated host ---
+add_subdirectory(enclaves/atls_server/enclave)
+add_subdirectory(enclaves/atls_server/host)
 
 # --- utility/QoL targets
 

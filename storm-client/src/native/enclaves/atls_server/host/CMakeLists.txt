@@ -25,9 +25,9 @@ endif ()
 if (BUILD_JNI_HOST)
     add_library(storm_atls_host SHARED
             ${ALL_U_STUBS}
-            ${CMAKE_CURRENT_SOURCE_DIR}/host.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/jni_bridge.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/ocalls_host.cpp
+            host.cpp
+            jni_bridge.cpp
+            ocalls_host.cpp
     )
     if (ALL_U_GEN_TGTS)
         add_dependencies(storm_atls_host ${ALL_U_GEN_TGTS})
@@ -61,9 +61,8 @@ endif ()
 if (BUILD_HOST_EXE)
     add_executable(oe_cli
             ${ALL_U_STUBS}
-            ${CMAKE_CURRENT_SOURCE_DIR}/host.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/ocalls_host.cpp
-            ../enclaves/atls_server/consts.h
+            host.cpp
+            ocalls_host.cpp
     )
     if (ALL_U_GEN_TGTS)
         add_dependencies(oe_cli ${ALL_U_GEN_TGTS})
