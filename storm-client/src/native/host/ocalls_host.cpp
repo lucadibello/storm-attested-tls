@@ -1,6 +1,3 @@
-// Copyright (c) Open Enclave SDK contributors.
-// Licensed under the MIT License.
-
 #include "atls_server_u.h"
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -9,6 +6,10 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <atomic>
+
+// Forward declaration of the readiness flag defined in host.cpp
+extern std::atomic<bool> g_server_ready;
 
 namespace {
 std::mutex g_mu;
@@ -27,7 +28,7 @@ extern "C" int ocall_socket(const int domain, const int type, const int protocol
 
 // Bind OCALL
 extern "C" int ocall_bind(const int sockfd, const void* addr, const size_t addrlen) {
-    return bind(sockfd, static_cast<const struct sockaddr *>(addr), static_cast<socklen_t>(addrlen));
+    return bind(sockfd, static_cast<const sockaddr *>(addr), static_cast<socklen_t>(addrlen));
 }
 
 // Listen OCALL
@@ -100,12 +101,11 @@ extern "C" int ocall_getaddrinfo(
     void* ai,
     const size_t ai_size_in,
     size_t* ai_size_out) {
+    addrinfo* result = nullptr;
+    const addrinfo* hints_ptr = nullptr;
 
-    struct addrinfo* result = nullptr;
-    const struct addrinfo* hints_ptr = nullptr;
-
-    if (hints && hints_size >= sizeof(struct addrinfo)) {
-        hints_ptr = static_cast<const struct addrinfo *>(hints);
+    if (hints && hints_size >= sizeof(addrinfo)) {
+        hints_ptr = static_cast<const addrinfo *>(hints);
     }
 
     int ret = getaddrinfo(node, service, hints_ptr, &result);
@@ -160,4 +160,12 @@ extern "C" int ocall_getaddrinfo(
 extern "C" void ocall_freeaddrinfo(void* ai) {
     // Memory is managed by enclave, nothing to do here
     (void)ai;
+}
+
+// Signal server ready OCALL
+extern "C" void ocall_server_ready() {
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_server_ready = true;
+    std::fputs("[HOST] Server signaled ready\n", stderr);
+    std::fflush(stderr);
 }

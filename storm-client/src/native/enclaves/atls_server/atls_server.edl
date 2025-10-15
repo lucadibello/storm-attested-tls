@@ -27,5 +27,8 @@ enclave {
                              [in] const void* hints, size_t hints_size,
                              [out, size=ai_size_in] void* ai, size_t ai_size_in, [out] size_t* ai_size_out) propagate_errno;
         void ocall_freeaddrinfo([user_check] void* ai);
+
+        // Signal from enclave that server is ready (bound and listening)
+        void ocall_server_ready();
     };
 };

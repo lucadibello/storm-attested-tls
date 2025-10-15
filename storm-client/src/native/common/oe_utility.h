@@ -1,8 +1,7 @@
 #ifndef OE_ATTESTED_TLS_SERVER_OE_UTILITY_H
 #define OE_ATTESTED_TLS_SERVER_OE_UTILITY_H
 
-#include <openenclave/attestation/attester.h>
-#include <openenclave/attestation/sgx/report.h>
+#include <openenclave/bits/result.h>
 
 namespace oe_common {
 

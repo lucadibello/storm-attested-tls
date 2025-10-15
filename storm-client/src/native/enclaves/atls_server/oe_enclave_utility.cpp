@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <openenclave/bits/module.h>
 
+#define LOG_PREFIX_OE_ENCLAVE_UTILITY "[oe_enclave_utility] "
+
 namespace oe_enclave_utility {
     oe_result_t load_oe_modules()
     {
@@ -27,7 +29,7 @@ namespace oe_enclave_utility {
                 oe_result_str(result));
             return result;
         }
-
+        printf(LOG_PREFIX_OE_ENCLAVE_UTILITY "Successfully loaded required Open Enclave modules\n");
         return result;
     }
 }

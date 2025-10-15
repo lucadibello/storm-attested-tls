@@ -3,6 +3,7 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <cstring>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -31,8 +32,7 @@ void run_server(oe_enclave_t* enclave, const std::string& port) {
 
     int retval = 0;
 
-    // Signal that we're starting the server
-    g_server_ready = true;
+    // The enclave will signal readiness via ocall_server_ready()
 
     if (oe_result_t result = ecall_set_up_tls_server(enclave, &retval, port_buffer, false); result != OE_OK) {
         spdlog::error("Server thread: ecall_set_up_tls_server() failed: result={} ({})",
@@ -51,7 +51,7 @@ bool run_connectivity_test(const int port) {
     spdlog::info("Running Connectivity Test");
     spdlog::info("========================================");
 
-    // Wait for server to be ready
+    // Wait for server to be signaled ready by the enclave
     int max_wait = 30; // 3 seconds
     while (!g_server_ready && max_wait > 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -64,7 +64,7 @@ bool run_connectivity_test(const int port) {
     }
 
     // Give the server a moment to bind and listen
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     TcpClient client("127.0.0.1", port);
 
@@ -176,7 +176,7 @@ int main(const int argc, const char *argv[]) {
   const bool test_passed = run_connectivity_test(port_number);
 
   // Give server a moment to handle the connection
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+  std::this_thread::sleep_for(std::chrono::seconds(20));
 
   spdlog::info("Waiting for server to complete...");
   spdlog::info("(Press Ctrl+C to stop if server is in continuous mode)");

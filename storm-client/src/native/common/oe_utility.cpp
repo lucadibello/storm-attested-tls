@@ -4,6 +4,7 @@
 #include <cstring>
 #include <openenclave/enclave.h>
 #include <openenclave/bits/asym_keys.h>
+#include <openenclave/attestation/sgx/report.h>
 
 namespace oe_common {
 
