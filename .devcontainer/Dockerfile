@@ -68,6 +68,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
   python3 python3-venv \
   golang-go \
   libspdlog-dev \
+  libmbedtls-dev \
   && rm -rf /var/lib/apt/lists/*
 
 # Create dev group/user matching host IDs
