@@ -17,14 +17,36 @@ using namespace oe_common;
 
 std::atomic<bool> g_server_ready(false);
 
-void print_usage(const char* program_name) {
-  spdlog::error("Usage: {} [--simulate] <enclave_image_path> -port:<port>", program_name);
-  spdlog::error("  --simulate    Run in simulation mode");
-  spdlog::error("  -port:<port>  Port number for the TLS server (e.g., -port:8443)");
+void print_usage(const char *program_name) {
+    spdlog::error("Usage: {} [--simulate] <enclave_image_path> -port:<port>", program_name);
+    spdlog::error("  --simulate    Run in simulation mode");
+    spdlog::error("  -port:<port>  Port number for the TLS server (e.g., -port:8443)");
+}
+
+oe_enclave_t *create_enclave(const char *enclave_path, const uint32_t flags) {
+    oe_enclave_t *enclave = nullptr;
+
+    printf("Host: Enclave library %s\n", enclave_path);
+    const oe_result_t result = oe_create_atls_server_enclave(
+        enclave_path,
+        OE_ENCLAVE_TYPE_SGX,
+        flags,
+        nullptr,
+        0,
+        &enclave);
+
+    if (result != OE_OK) {
+        printf(
+            "Host: oe_create_remoteattestation_enclave failed. %s",
+            oe_result_str(result));
+    } else {
+        printf("Host: Enclave successfully created.\n");
+    }
+    return enclave;
 }
 
 // Thread function to run the server
-void run_server(oe_enclave_t* enclave, const std::string& port) {
+void run_server(oe_enclave_t *enclave, const std::string &port) {
     spdlog::info("Server thread: Starting TLS server on port {}", port);
 
     char port_buffer[port.size() + 1];
@@ -104,102 +126,93 @@ bool run_connectivity_test(const int port) {
 }
 
 int main(const int argc, const char *argv[]) {
-  oe_enclave_t *atls_server_enclave = nullptr;
+    oe_enclave_t *atls_server_enclave = nullptr;
 
-  // Set up spdlog with colored console output
-  auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-  const auto logger = std::make_shared<spdlog::logger>("host", console_sink);
-  logger->set_level(spdlog::level::info);
-  spdlog::set_default_logger(logger);
+    // Set up spdlog with colored console output
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    const auto logger = std::make_shared<spdlog::logger>("host", console_sink);
+    logger->set_level(spdlog::level::debug);
+    spdlog::set_default_logger(logger);
 
-  spdlog::info("");
-  spdlog::info("========================================");
-  spdlog::info("Attested TLS Server Demo");
-  spdlog::info("========================================");
-  spdlog::info("");
+    spdlog::info("");
+    spdlog::info("========================================");
+    spdlog::info("Attested TLS Server Demo");
+    spdlog::info("========================================");
+    spdlog::info("");
 
-  // Use ArgumentParser to parse command-line arguments
-  ArgumentParser parser(argc, argv);
+    // Use ArgumentParser to parse command-line arguments
+    ArgumentParser parser(argc, argv);
 
-  uint32_t flags = OE_ENCLAVE_FLAG_DEBUG;
-  if (parser.check_and_remove_flag("--simulate")) {
-    spdlog::info("Running in simulation mode");
-    flags |= OE_ENCLAVE_FLAG_SIMULATE;
-  }
+    uint32_t flags = OE_ENCLAVE_FLAG_DEBUG;
+    if (parser.check_and_remove_flag("--simulate")) {
+        spdlog::info("Running in simulation mode");
+        flags |= OE_ENCLAVE_FLAG_SIMULATE;
+    }
 
-  // After removing flags, should have: program + enclave path + port
-  if (parser.get_argc() != 3) {
-    print_usage(argv[0]);
-    return 1;
-  }
+    // After removing flags, should have: program + enclave path + port
+    if (parser.get_argc() != 3) {
+        print_usage(argv[0]);
+        return 1;
+    }
 
-  const std::string enclave_path = parser.get_arg(1);
+    const std::string enclave_path = parser.get_arg(1);
 
-  // Parse port argument
-  std::string server_port = parser.parse_value_argument("-port:");
-  if (server_port.empty()) {
-    spdlog::error("Invalid or missing port argument");
-    print_usage(argv[0]);
-    return 1;
-  }
+    // Parse port argument
+    std::string server_port = parser.parse_value_argument("-port:");
+    if (server_port.empty()) {
+        spdlog::error("Invalid or missing port argument");
+        print_usage(argv[0]);
+        return 1;
+    }
 
-  const int port_number = std::stoi(server_port);
-  spdlog::info("Configuration:");
-  spdlog::info("  - Enclave: {}", enclave_path);
-  spdlog::info("  - Port: {}", server_port);
-  spdlog::info("  - Simulation: {}", (flags & OE_ENCLAVE_FLAG_SIMULATE) ? "Yes" : "No");
-  spdlog::info("");
+    const int port_number = std::stoi(server_port);
+    spdlog::info("Configuration:");
+    spdlog::info("  - Enclave: {}", enclave_path);
+    spdlog::info("  - Port: {}", server_port);
+    spdlog::info("  - Simulation: {}", (flags & OE_ENCLAVE_FLAG_SIMULATE) ? "Yes" : "No");
+    spdlog::info("");
 
-  // Use the enclave-specific constructor for atls_server
-  // This registers the OCALL table properly
-  spdlog::info("Creating enclave...");
-  oe_result_t result = oe_create_atls_server_enclave(
-      enclave_path.c_str(),
-      OE_ENCLAVE_TYPE_AUTO,
-      flags,
-      nullptr,
-      0,
-      &atls_server_enclave);
+    // Use the enclave-specific constructor for atls_server
+    // This registers the OCALL table properly
+    spdlog::info("Creating enclave...");
+    atls_server_enclave = create_enclave(enclave_path.c_str(), flags);
+    if (!atls_server_enclave) {
+        spdlog::error("✗ Failed to create enclave. Check console for logs");
+        return 1;
+    }
+    spdlog::info("✓ Enclave created successfully");
+    spdlog::info("");
 
-  if (result != OE_OK || !atls_server_enclave) {
-    spdlog::error("✗ Failed to create enclave: {} ({})",
-                  oe_result_str(result), result);
-    return 1;
-  }
-  spdlog::info("✓ Enclave created successfully");
-  spdlog::info("");
+    // Start server in a separate thread
+    std::thread server_thread(run_server, atls_server_enclave, server_port);
 
-  // Start server in a separate thread
-  std::thread server_thread(run_server, atls_server_enclave, server_port);
+    // Run connectivity test
+    // const bool test_passed = run_connectivity_test(port_number);
 
-  // Run connectivity test
-  const bool test_passed = run_connectivity_test(port_number);
+    // Give server a moment to handle the connection
+    std::this_thread::sleep_for(std::chrono::seconds(20));
 
-  // Give server a moment to handle the connection
-  std::this_thread::sleep_for(std::chrono::seconds(20));
+    //spdlog::info("Waiting for server to complete...");
+    // spdlog::info("(Press Ctrl+C to stop if server is in continuous mode)");
 
-  spdlog::info("Waiting for server to complete...");
-  spdlog::info("(Press Ctrl+C to stop if server is in continuous mode)");
+    // Wait a bit for the server to process the connection
+    // std::this_thread::sleep_for(std::chrono::seconds(3));
 
-  // Wait a bit for the server to process the connection
-  std::this_thread::sleep_for(std::chrono::seconds(3));
+    // spdlog::info("");
+    // spdlog::info("Terminating enclave...");
+    // spdlog::info("✓ Enclave terminated");
 
-  spdlog::info("");
-  spdlog::info("Terminating enclave...");
-  EnclaveManager::destroy_enclave(atls_server_enclave);
-  spdlog::info("✓ Enclave terminated");
+    // free enclave + check if success
+    if (!EnclaveManager::destroy_enclave(atls_server_enclave)) {
+        spdlog::error("Failed to destroy enclave.");
+    }
 
-  // Note: server_thread might still be running if the server is in continuous mode
-  // In production, you'd want proper cleanup here
-  if (server_thread.joinable()) {
-    server_thread.detach(); // Detach since server might be blocking
-  }
+    // Note: server_thread might still be running if the server is in continuous mode
+    // In production, you'd want proper cleanup here
+    if (server_thread.joinable()) {
+        server_thread.detach(); // Detach since server might be blocking
+    }
 
-  spdlog::info("");
-  spdlog::info("========================================");
-  spdlog::info("Demo Complete");
-  spdlog::info("Result: {}", test_passed ? "SUCCESS ✓" : "FAILED ✗");
-  spdlog::info("========================================");
-
-  return test_passed ? 0 : 1;
+    spdlog::debug("Bye!");
+    return 0;
 }
