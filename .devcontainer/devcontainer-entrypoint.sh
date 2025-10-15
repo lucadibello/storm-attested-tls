@@ -60,21 +60,16 @@ ensure_device_group() {
   local device_gid
   device_gid="$(stat -c '%g' "$device_path")" || return
 
-  # Skip if the device is root-owned and no supplemental group is required.
-  if [ "$device_gid" = "0" ]; then
-    return
-  fi
-
   local group_name
-  if getent group "$device_gid" >/dev/null; then
+  if [ "$device_gid" != "0" ] && getent group "$device_gid" >/dev/null; then
     group_name="$(getent group "$device_gid" | cut -d: -f1)"
   else
     group_name="$device_alias"
-    if getent group "$group_name" >/dev/null; then
-      groupmod -g "$device_gid" "$group_name" || return
-    else
-      groupadd -g "$device_gid" "$group_name" || return
+    if ! getent group "$group_name" >/dev/null; then
+      groupadd "$group_name" || return
     fi
+    chgrp "$group_name" "$device_path" || return
+    chmod g+rw "$device_path" || return
   fi
 
   usermod -aG "$group_name" "$DEVUSER" || true
